@@ -43,6 +43,15 @@ impl<'template> TemplateCompiler<'template> {
             if self.remaining_text.starts_with("{{") {
                 let path = self.consume_value()?;
                 self.instructions.push(Instruction::Value(path));
+            } else if self.remaining_text.starts_with("{#") {
+                let tag = self.consume_tag("#}")?;
+                let comment = tag[2..(tag.len() - 2)].trim();
+                if comment.starts_with('-') {
+                    self.trim_last_whitespace();
+                }
+                if comment.ends_with('-') {
+                    self.trim_next_whitespace();
+                }
             } else if self.remaining_text.starts_with("{%") {
                 let (discriminant, rest) = self.consume_block()?;
                 match discriminant {
@@ -121,7 +130,7 @@ impl<'template> TemplateCompiler<'template> {
     }
 
     fn expect_empty(&self, text: &str) -> Result<()> {
-        if text == "" {
+        if text.is_empty() {
             Ok(())
         } else {
             Err(ParseError {
@@ -274,8 +283,6 @@ impl<'template> TemplateCompiler<'template> {
 
 #[cfg(test)]
 mod test {
-    #![allow(needless_pass_by_value)]
-
     use super::*;
     use instruction::Instruction::*;
 
@@ -396,14 +403,35 @@ mod test {
     }
 
     #[test]
+    fn test_comment() {
+        let text = "Hello, {# foo bar baz #} there!";
+        let instructions = compile(text).unwrap();
+        assert_eq!(2, instructions.len());
+        assert_eq!(&Literal("Hello, "), &instructions[0]);
+        assert_eq!(&Literal(" there!"), &instructions[1]);
+    }
+
+    #[test]
+    fn test_strip_whitespace_comment() {
+        let text = "Hello, \t\n    {#- foo bar baz -#} \t  there!";
+        let instructions = compile(text).unwrap();
+        assert_eq!(2, instructions.len());
+        assert_eq!(&Literal("Hello,"), &instructions[0]);
+        assert_eq!(&Literal("there!"), &instructions[1]);
+    }
+
+    #[test]
     fn test_unclosed_tags() {
         let tags = vec![
             "{{",
             "{{ foo.bar",
-            "{{ foo.bar\n%}",
+            "{{ foo.bar\n }}",
             "{%",
             "{% if foo.bar",
             "{% if foo.bar \n%}",
+            "{#",
+            "{# if foo.bar",
+            "{# if foo.bar \n#}",
         ];
         for tag in tags {
             compile(tag).unwrap_err();

@@ -19,7 +19,6 @@ use template::Template;
 /*
 TODO:
 - Implement parsing using Jinja2-like syntax
-    - Comments {# Foo bar baz #}
     - Call {% call macro_name foo.bar %}
     - Formatters {{ foo.bar | my_formatter }}
 - Implement error detail handling by calculating the line/column when an error occurs
