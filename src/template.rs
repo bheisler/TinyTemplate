@@ -1,72 +1,13 @@
 use compiler::TemplateCompiler;
 use error::Error::*;
-use error::{Error, Result};
+use error::*;
+use format;
 use instruction::{Instruction, PathSlice};
 use serde_json::Value;
+use std::collections::HashMap;
 use std::fmt::Write;
 use std::slice;
-
-fn lookup_error(step: &str, path: PathSlice, current: &Value) -> Error {
-    let avail_str = if let Value::Object(object_map) = current {
-        let mut avail_str = " Available values at this level are '".to_string();
-        for (i, key) in object_map.keys().enumerate() {
-            avail_str.push_str(key);
-            if i > 0 {
-                avail_str.push_str(", ");
-            }
-        }
-        avail_str
-    } else {
-        "".to_string()
-    };
-
-    RenderError {
-        msg: format!(
-            "Failed to find value '{}' from path '{}'.{}",
-            step,
-            path_to_str(path),
-            avail_str
-        ),
-    }
-}
-
-fn truthiness_error(path: PathSlice) -> Error {
-    RenderError {
-        msg: format!(
-            "Path '{}' produced a value which could not be checked for truthiness.",
-            path_to_str(path)
-        ),
-    }
-}
-
-fn unprintable_error(path: PathSlice) -> Error {
-    RenderError {
-        msg: format!(
-            "Expected a printable value for path '{}' but found array or object.",
-            path_to_str(path)
-        ),
-    }
-}
-
-fn not_iterable_error(path: PathSlice) -> Error {
-    RenderError {
-        msg: format!(
-            "Expected an array for path '{}' but found a non-iterable value.",
-            path_to_str(path)
-        ),
-    }
-}
-
-fn path_to_str(path: PathSlice) -> String {
-    let mut path_str = "".to_string();
-    for (i, step) in path.iter().enumerate() {
-        path_str.push_str(step);
-        if i > 0 {
-            path_str.push('.');
-        }
-    }
-    path_str
-}
+use Formatter;
 
 enum ContextElement<'render, 'template> {
     Object(&'render Value),
@@ -138,10 +79,26 @@ impl<'template> Template<'template> {
         })
     }
 
-    pub fn render(&self, context: &Value) -> Result<String> {
+    pub fn render(
+        &self,
+        context: &Value,
+        template_registry: &HashMap<&str, Template>,
+        formatter_registry: &HashMap<&str, Box<Formatter>>,
+    ) -> Result<String> {
         // The length of the original template seems like a reasonable guess at the length of the
         // output.
         let mut output = String::with_capacity(self.template_len);
+        self.render_into(context, template_registry, formatter_registry, &mut output)?;
+        Ok(output)
+    }
+
+    pub fn render_into(
+        &self,
+        context: &Value,
+        template_registry: &HashMap<&str, Template>,
+        formatter_registry: &HashMap<&str, Box<Formatter>>,
+        output: &mut String,
+    ) -> Result<()> {
         let mut program_counter = 0;
         let mut render_context = RenderContext {
             context_stack: vec![ContextElement::Object(context)],
@@ -155,7 +112,7 @@ impl<'template> Template<'template> {
                 }
                 Instruction::Value(path) => {
                     let first = *path.first().unwrap();
-                    if first.starts_with("@") {
+                    if first.starts_with('@') {
                         match first {
                             "@index" => {
                                 write!(output, "{}", render_context.lookup_index()?).unwrap()
@@ -164,13 +121,15 @@ impl<'template> Template<'template> {
                         }
                     } else {
                         let value_to_render = render_context.lookup(path)?;
-                        match value_to_render {
-                            Value::Null => {}
-                            Value::Bool(b) => write!(output, "{}", b).unwrap(),
-                            Value::Number(n) => write!(output, "{}", n).unwrap(),
-                            Value::String(s) => output.push_str(s),
-                            _ => return Err(unprintable_error(path)),
-                        };
+                        format(value_to_render, output)?;
+                    }
+                    program_counter += 1;
+                }
+                Instruction::FormattedValue(path, name) => {
+                    let value_to_render = render_context.lookup(path)?;
+                    match formatter_registry.get(name) {
+                        Some(formatter) => formatter(value_to_render, output)?,
+                        None => return Err(unknown_formatter(name)),
                     }
                     program_counter += 1;
                 }
@@ -249,10 +208,22 @@ impl<'template> Template<'template> {
                         _ => panic!("Malformed program."),
                     };
                 }
+                Instruction::Call(template_name, path) => {
+                    let context_value = render_context.lookup(path)?;
+                    match template_registry.get(template_name) {
+                        Some(templ) => templ.render_into(
+                            context_value,
+                            template_registry,
+                            formatter_registry,
+                            output,
+                        )?,
+                        None => return Err(unknown_template(template_name)),
+                    }
+                    program_counter += 1;
+                }
             }
         }
-
-        Ok(output)
+        Ok(())
     }
 }
 
@@ -295,11 +266,34 @@ mod test {
         serde_json::to_value(&ctx).unwrap()
     }
 
+    fn other_templates() -> HashMap<&'static str, Template<'static>> {
+        let mut map = HashMap::new();
+        map.insert("my_macro", compile("{{value}}"));
+        map
+    }
+
+    fn format(value: &Value, output: &mut String) -> Result<()> {
+        output.push_str("{");
+        ::format(value, output)?;
+        output.push_str("}");
+        Ok(())
+    }
+
+    fn formatters() -> HashMap<&'static str, Box<Formatter>> {
+        let mut map = HashMap::<&'static str, Box<Formatter>>::new();
+        map.insert("my_formatter", Box::new(format));
+        map
+    }
+
     #[test]
     fn test_literal() {
         let template = compile("Hello!");
         let context = context();
-        let string = template.render(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
         assert_eq!("Hello!", &string);
     }
 
@@ -307,7 +301,11 @@ mod test {
     fn test_value() {
         let template = compile("{{ number }}");
         let context = context();
-        let string = template.render(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
         assert_eq!("5", &string);
     }
 
@@ -315,7 +313,11 @@ mod test {
     fn test_path() {
         let template = compile("The number of the day is {{ nested.value }}.");
         let context = context();
-        let string = template.render(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
         assert_eq!("The number of the day is 10.", &string);
     }
 
@@ -323,7 +325,11 @@ mod test {
     fn test_if_taken() {
         let template = compile("{% if boolean %}Hello!{% endif %}");
         let context = context();
-        let string = template.render(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
         assert_eq!("Hello!", &string);
     }
 
@@ -331,7 +337,11 @@ mod test {
     fn test_if_not_taken() {
         let template = compile("{% if null %}Hello!{% endif %}");
         let context = context();
-        let string = template.render(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
         assert_eq!("", &string);
     }
 
@@ -339,7 +349,11 @@ mod test {
     fn test_if_else_taken() {
         let template = compile("{% if boolean %}Hello!{% else %}Goodbye!{% endif %}");
         let context = context();
-        let string = template.render(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
         assert_eq!("Hello!", &string);
     }
 
@@ -347,7 +361,11 @@ mod test {
     fn test_if_else_not_taken() {
         let template = compile("{% if null %}Hello!{% else %}Goodbye!{% endif %}");
         let context = context();
-        let string = template.render(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
         assert_eq!("Goodbye!", &string);
     }
 
@@ -357,7 +375,11 @@ mod test {
             "{% if boolean %}Hi, {% if null %}there!{% else %}Hello!{% endif %}{% endif %}",
         );
         let context = context();
-        let string = template.render(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
         assert_eq!("Hi, Hello!", &string);
     }
 
@@ -365,7 +387,11 @@ mod test {
     fn test_with() {
         let template = compile("{% with nested %}{{value}}{%endwith%}");
         let context = context();
-        let string = template.render(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
         assert_eq!("10", &string);
     }
 
@@ -373,7 +399,11 @@ mod test {
     fn test_named_with() {
         let template = compile("{% with nested as n %}{{ n.value }} {{ number }}{%endwith%}");
         let context = context();
-        let string = template.render(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
         assert_eq!("10 5", &string);
     }
 
@@ -381,7 +411,11 @@ mod test {
     fn test_for_loop() {
         let template = compile("{% for a in array %}{{ a }}{% endfor %}");
         let context = context();
-        let string = template.render(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
         assert_eq!("123", &string);
     }
 
@@ -389,7 +423,11 @@ mod test {
     fn test_for_loop_index() {
         let template = compile("{% for a in array %}{{ @index }}{% endfor %}");
         let context = context();
-        let string = template.render(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
         assert_eq!("012", &string);
     }
 
@@ -397,14 +435,46 @@ mod test {
     fn test_whitespace_stripping_value() {
         let template = compile("1  \n\t   {{- number -}}  \n   1");
         let context = context();
-        let string = template.render(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
         assert_eq!("151", &string);
+    }
+
+    #[test]
+    fn test_call() {
+        let template = compile("{% call my_macro with nested %}");
+        let context = context();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
+        assert_eq!("10", &string);
+    }
+
+    #[test]
+    fn test_formatter() {
+        let template = compile("{{ nested.value | my_formatter }}");
+        let context = context();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
+        assert_eq!("{10}", &string);
     }
 
     #[test]
     fn test_unknown() {
         let template = compile("{{ foobar }}");
         let context = context();
-        template.render(&context).unwrap_err();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap_err();
     }
 }

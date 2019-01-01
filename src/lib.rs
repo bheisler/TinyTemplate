@@ -10,31 +10,52 @@ pub mod error;
 mod instruction;
 mod template;
 
-use error::Error::*;
-use error::Result;
+use error::*;
 use serde::Serialize;
+use serde_json::Value;
 use std::collections::HashMap;
+use std::fmt::Write;
 use template::Template;
 
 /*
 TODO:
-- Implement parsing using Jinja2-like syntax
-    - Call {% call macro_name foo.bar %}
-    - Formatters {{ foo.bar | my_formatter }}
 - Implement error detail handling by calculating the line/column when an error occurs
 - HTML escaping?
 - Benchmark
 - Write documentation
 - CI builds
-- Build my own clone of serde_json::Value so I can drop serde_json.
+- Build my own clone of serde_json::Value so I can drop serde_json?
 */
+pub type Formatter = Fn(&Value, &mut String) -> Result<()>;
+
+pub fn format(value: &Value, output: &mut String) -> Result<()> {
+    match value {
+        Value::Null => Ok(()),
+        Value::Bool(b) => {
+            write!(output, "{}", b)?;
+            Ok(())
+        }
+        Value::Number(n) => {
+            write!(output, "{}", n)?;
+            Ok(())
+        }
+        Value::String(s) => {
+            output.push_str(s);
+            Ok(())
+        }
+        _ => Err(unprintable_error()),
+    }
+}
+
 pub struct TinyTemplate<'template> {
     templates: HashMap<&'template str, Template<'template>>,
+    formatters: HashMap<&'template str, Box<Formatter>>,
 }
 impl<'template> TinyTemplate<'template> {
     pub fn new() -> TinyTemplate<'template> {
         TinyTemplate {
             templates: HashMap::default(),
+            formatters: HashMap::default(),
         }
     }
 
@@ -44,14 +65,21 @@ impl<'template> TinyTemplate<'template> {
         Ok(())
     }
 
+    pub fn add_formatter<F>(&mut self, name: &'template str, formatter: F)
+    where
+        F: 'static + Fn(&Value, &mut String) -> Result<()>,
+    {
+        self.formatters.insert(name, Box::new(formatter));
+    }
+
     pub fn render<C>(&self, template: &str, context: &C) -> Result<String>
     where
         C: Serialize,
     {
         let value = serde_json::to_value(context)?;
         match self.templates.get(template) {
-            Some(tmpl) => tmpl.render(&value),
-            None => Err(UnknownTemplate {
+            Some(tmpl) => tmpl.render(&value, &self.templates, &self.formatters),
+            None => Err(Error::UnknownTemplate {
                 msg: format!("Unknown template '{}'", template),
             }),
         }
