@@ -21,13 +21,13 @@ TODO:
 - Implement parsing using Jinja2-like syntax
     - Comments {# Foo bar baz #}
     - Call {% call macro_name foo.bar %}
-    - Indexing {{ foo.bar[5] }} {{ foo.bar[index] }}
     - Formatters {{ foo.bar | my_formatter }}
 - Implement error detail handling by calculating the line/column when an error occurs
 - HTML escaping?
 - Benchmark
 - Write documentation
 - CI builds
+- Build my own clone of serde_json::Value so I can drop serde_json.
 */
 pub struct TinyTemplate<'template> {
     templates: HashMap<&'template str, Template<'template>>,

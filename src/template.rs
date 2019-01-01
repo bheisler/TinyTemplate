@@ -74,7 +74,7 @@ enum ContextElement<'render, 'template> {
     Iteration(
         &'template str,
         &'render Value,
-        isize,
+        usize,
         slice::Iter<'render, Value>,
     ),
 }
@@ -112,6 +112,18 @@ impl<'render, 'template> RenderContext<'render, 'template> {
         }
         Ok(current)
     }
+
+    fn lookup_index(&self) -> Result<usize> {
+        for stack_layer in self.context_stack.iter().rev() {
+            match stack_layer {
+                ContextElement::Iteration(_, _, index, _) => return Ok(*index),
+                _ => continue,
+            }
+        }
+        Err(RenderError {
+            msg: "Used @index outside of a foreach block.".to_string(),
+        })
+    }
 }
 
 pub(crate) struct Template<'template> {
@@ -142,14 +154,24 @@ impl<'template> Template<'template> {
                     program_counter += 1;
                 }
                 Instruction::Value(path) => {
-                    let value_to_render = render_context.lookup(path)?;
-                    match value_to_render {
-                        Value::Null => {}
-                        Value::Bool(b) => write!(output, "{}", b).unwrap(),
-                        Value::Number(n) => write!(output, "{}", n).unwrap(),
-                        Value::String(s) => output.push_str(s),
-                        _ => return Err(unprintable_error(path)),
-                    };
+                    let first = *path.first().unwrap();
+                    if first.starts_with("@") {
+                        match first {
+                            "@index" => {
+                                write!(output, "{}", render_context.lookup_index()?).unwrap()
+                            }
+                            _ => panic!(), // This should have been caught by the parser.
+                        }
+                    } else {
+                        let value_to_render = render_context.lookup(path)?;
+                        match value_to_render {
+                            Value::Null => {}
+                            Value::Bool(b) => write!(output, "{}", b).unwrap(),
+                            Value::Number(n) => write!(output, "{}", n).unwrap(),
+                            Value::String(s) => output.push_str(s),
+                            _ => return Err(unprintable_error(path)),
+                        };
+                    }
                     program_counter += 1;
                 }
                 Instruction::Branch(path, target) => {
@@ -193,9 +215,14 @@ impl<'template> Template<'template> {
                 Instruction::PushIterationContext(path, name) => {
                     let context_value = render_context.lookup(path)?;
                     match context_value {
-                        Value::Array(ref arr) => render_context.context_stack.push(
-                            ContextElement::Iteration(name, &Value::Null, -1, arr.iter()),
-                        ),
+                        Value::Array(ref arr) => {
+                            render_context.context_stack.push(ContextElement::Iteration(
+                                name,
+                                &Value::Null,
+                                std::usize::MAX,
+                                arr.iter(),
+                            ))
+                        }
                         _ => return Err(not_iterable_error(path)),
                     };
                     program_counter += 1;
@@ -212,7 +239,7 @@ impl<'template> Template<'template> {
                         Some(ContextElement::Iteration(_, val, index, iter)) => match iter.next() {
                             Some(new_val) => {
                                 *val = new_val;
-                                *index += 1;
+                                *index = index.wrapping_add(1);
                                 program_counter += 1;
                             }
                             None => {
@@ -356,6 +383,14 @@ mod test {
         let context = context();
         let string = template.render(&context).unwrap();
         assert_eq!("123", &string);
+    }
+
+    #[test]
+    fn test_for_loop_index() {
+        let template = compile("{% for a in array %}{{ @index }}{% endfor %}");
+        let context = context();
+        let string = template.render(&context).unwrap();
+        assert_eq!("012", &string);
     }
 
     #[test]

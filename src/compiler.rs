@@ -10,8 +10,16 @@ enum Block {
     With,
 }
 
-fn parse_path(text: &str) -> Path {
-    text.split('.').collect::<Vec<_>>()
+fn parse_path(text: &str) -> Result<Path> {
+    if !text.starts_with('@') {
+        Ok(text.split('.').collect::<Vec<_>>())
+    } else if text == "@index" {
+        Ok(vec![text])
+    } else {
+        Err(ParseError {
+            msg: format!("Invalid keyword name '{}'", text),
+        })
+    }
 }
 
 pub(crate) struct TemplateCompiler<'template> {
@@ -39,7 +47,7 @@ impl<'template> TemplateCompiler<'template> {
                 let (discriminant, rest) = self.consume_block()?;
                 match discriminant {
                     "if" => {
-                        let path = parse_path(rest);
+                        let path = parse_path(rest)?;
                         self.block_stack
                             .push(Block::Branch(self.instructions.len()));
                         self.instructions.push(Instruction::Branch(path, UNKNOWN));
@@ -58,7 +66,7 @@ impl<'template> TemplateCompiler<'template> {
                         self.close_branch(num_instructions)?;
                     }
                     "with" => {
-                        let (path, name) = self.parse_with(rest);
+                        let (path, name) = self.parse_with(rest)?;
                         let instruction = match name {
                             Some(name) => Instruction::PushNamedContext(path, name),
                             None => Instruction::PushContext(path),
@@ -182,7 +190,7 @@ impl<'template> TemplateCompiler<'template> {
             path = path[0..path.len() - 1].trim();
             self.trim_next_whitespace();
         }
-        Ok(parse_path(path))
+        Ok(parse_path(path)?)
     }
 
     fn trim_last_whitespace(&mut self) {
@@ -235,15 +243,18 @@ impl<'template> TemplateCompiler<'template> {
         }
     }
 
-    fn parse_with(&self, with_text: &'template str) -> (Path<'template>, Option<&'template str>) {
+    fn parse_with(
+        &self,
+        with_text: &'template str,
+    ) -> Result<(Path<'template>, Option<&'template str>)> {
         if let Some(index) = with_text.find(" as ") {
             let (path_str, name_str) = with_text.split_at(index);
-            let path = parse_path(path_str.trim());
+            let path = parse_path(path_str.trim())?;
             let name = name_str[" as ".len()..].trim();
-            (path, Some(name))
+            Ok((path, Some(name)))
         } else {
-            let path = parse_path(with_text);
-            (path, None)
+            let path = parse_path(with_text)?;
+            Ok((path, None))
         }
     }
 
@@ -251,7 +262,7 @@ impl<'template> TemplateCompiler<'template> {
         if let Some(index) = for_text.find(" in ") {
             let (name_str, path_str) = for_text.split_at(index);
             let name = name_str.trim();
-            let path = parse_path(path_str[" in ".len()..].trim());
+            let path = parse_path(path_str[" in ".len()..].trim())?;
             Ok((path, name))
         } else {
             Err(ParseError {
@@ -402,6 +413,12 @@ mod test {
     #[test]
     fn test_mismatched_blocks() {
         let text = "{% if foo %}{% with bar %}{% endif %} {% endwith %}";
+        compile(text).unwrap_err();
+    }
+
+    #[test]
+    fn test_disallows_invalid_keywords() {
+        let text = "{{ @foo }}";
         compile(text).unwrap_err();
     }
 }
