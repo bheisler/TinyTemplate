@@ -27,7 +27,7 @@ TinyTemplate is a small, minimalistic text templating system with limited depend
 
  The primary design goals are:
 
- - __Small__: TinyTemplate deliberately does not support many features of more powerful template engines and is restricted to templates which are `&static str`'s.
+ - __Small__: TinyTemplate deliberately does not support many features of more powerful template engines.
  - __Simple__: TinyTemplate presents a minimal but well-documented user-facing API.
  - __Lightweight__: TinyTemplate has minimal required dependencies.
 
@@ -36,9 +36,10 @@ TinyTemplate is a small, minimalistic text templating system with limited depend
 I created TinyTemplate after noticing that none of the existing template libraries really suited my
 needs for Criterion.rs. Some had large dependency trees to support features that I didn't use. Some
 required adding a build script to convert templates into code at runtime, in search of extreme
-performance that I didn't need. Some have elaborate macro-based DSL's to generate HTML, where I just
-wanted plain text with some markup. I just wanted something small and minimal with good 
-documentation but there was nothing like that out there so I wrote my own.
+performance that I didn't need. Some had elaborate macro-based DSL's to generate HTML, where I just
+wanted plain text with some markup. Some expect the templates to be provided in a directory of text
+files, but I wanted the template to be included in the binary. I just wanted something small and 
+minimal with good documentation but there was nothing like that out there so I wrote my own.
 
 ### Quickstart
 
