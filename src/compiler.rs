@@ -4,6 +4,11 @@ use instruction::{Branch, Instruction, Path};
 
 const UNKNOWN: usize = std::usize::MAX;
 
+enum Block {
+    Branch(usize),
+    With,
+}
+
 fn parse_path(text: &str) -> Path {
     text.split('.').collect::<Vec<_>>()
 }
@@ -12,6 +17,7 @@ pub(crate) struct TemplateCompiler<'template> {
     full_text: &'template str,
     remaining_text: &'template str,
     instructions: Vec<Instruction<'template>>,
+    block_stack: Vec<Block>,
 }
 impl<'template> TemplateCompiler<'template> {
     pub fn new(text: &'template str) -> TemplateCompiler<'template> {
@@ -19,6 +25,7 @@ impl<'template> TemplateCompiler<'template> {
             full_text: text,
             remaining_text: text,
             instructions: vec![],
+            block_stack: vec![],
         }
     }
 
@@ -32,11 +39,13 @@ impl<'template> TemplateCompiler<'template> {
                 match discriminant {
                     "if" => {
                         let path = parse_path(rest);
+                        self.block_stack
+                            .push(Block::Branch(self.instructions.len()));
                         self.instructions.push(Instruction::Branch(Branch {
                             path,
                             invert: true,
                             target: UNKNOWN,
-                        }))
+                        }));
                     }
                     "else" => {
                         self.expect_empty(rest)?;
@@ -45,6 +54,8 @@ impl<'template> TemplateCompiler<'template> {
                             b.target = num_instructions;
                             b.path.clone()
                         })?;
+                        self.block_stack
+                            .push(Block::Branch(self.instructions.len()));
                         self.instructions.push(Instruction::Branch(Branch {
                             path: path_clone,
                             invert: false,
@@ -58,11 +69,18 @@ impl<'template> TemplateCompiler<'template> {
                     }
                     "with" => {
                         let path = parse_path(rest);
-                        self.instructions.push(Instruction::PushContext(path))
+                        self.instructions.push(Instruction::PushContext(path));
+                        self.block_stack.push(Block::With);
                     }
                     "endwith" => {
                         self.expect_empty(rest)?;
-                        self.instructions.push(Instruction::PopContext)
+                        if let Some(Block::With) = self.block_stack.pop() {
+                            self.instructions.push(Instruction::PopContext)
+                        } else {
+                            return Err(ParseError {
+                                msg: "Found a closing endwith that doesn't match with a preceeding with.".to_string()
+                            });
+                        }
                     }
                     _ => {
                         return Err(ParseError {
@@ -96,12 +114,13 @@ impl<'template> TemplateCompiler<'template> {
     where
         F: FnOnce(&mut Branch<'template>) -> T,
     {
-        let instr = self.instructions.iter_mut().rfind(|instr| match instr {
-            Instruction::Branch(branch) if branch.target == UNKNOWN => true,
-            _ => false,
-        });
-        if let Some(Instruction::Branch(branch)) = instr {
-            Ok(f(branch))
+        let branch_block = self.block_stack.pop();
+        if let Some(Block::Branch(index)) = branch_block {
+            if let Instruction::Branch(branch) = &mut self.instructions[index] {
+                Ok(f(branch))
+            } else {
+                unreachable!()
+            }
         } else {
             Err(ParseError {
                 msg: "Found a closing endif or else which doesn't match with a preceding if."
@@ -244,9 +263,22 @@ mod test {
 
     #[test]
     fn test_unclosed_tags() {
-        let tags = vec!["{{", "{{ foo.bar", "{{ foo.bar\n"];
+        let tags = vec![
+            "{{",
+            "{{ foo.bar",
+            "{{ foo.bar\n%}",
+            "{%",
+            "{% if foo.bar",
+            "{% if foo.bar \n%}",
+        ];
         for tag in tags {
             compile(tag).unwrap_err();
         }
+    }
+
+    #[test]
+    fn test_mismatched_blocks() {
+        let text = "{% if foo %}{% with bar %}{% endif %} {% endwith %}";
+        compile(text).unwrap_err();
     }
 }
