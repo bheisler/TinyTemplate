@@ -292,7 +292,7 @@ mod test {
 
     fn other_templates() -> HashMap<&'static str, Template<'static>> {
         let mut map = HashMap::new();
-        map.insert("my_macro", compile("{{value}}"));
+        map.insert("my_macro", compile("{value}"));
         map
     }
 
@@ -323,7 +323,7 @@ mod test {
 
     #[test]
     fn test_value() {
-        let template = compile("{{ number }}");
+        let template = compile("{ number }");
         let context = context();
         let template_registry = other_templates();
         let formatter_registry = formatters();
@@ -335,7 +335,7 @@ mod test {
 
     #[test]
     fn test_path() {
-        let template = compile("The number of the day is {{ nested.value }}.");
+        let template = compile("The number of the day is { nested.value }.");
         let context = context();
         let template_registry = other_templates();
         let formatter_registry = formatters();
@@ -347,7 +347,7 @@ mod test {
 
     #[test]
     fn test_if_taken() {
-        let template = compile("{% if boolean %}Hello!{% endif %}");
+        let template = compile("{{ if boolean }}Hello!{{ endif }}");
         let context = context();
         let template_registry = other_templates();
         let formatter_registry = formatters();
@@ -359,7 +359,7 @@ mod test {
 
     #[test]
     fn test_if_not_taken() {
-        let template = compile("{% if null %}Hello!{% endif %}");
+        let template = compile("{{ if null }}Hello!{{ endif }}");
         let context = context();
         let template_registry = other_templates();
         let formatter_registry = formatters();
@@ -371,7 +371,7 @@ mod test {
 
     #[test]
     fn test_if_else_taken() {
-        let template = compile("{% if boolean %}Hello!{% else %}Goodbye!{% endif %}");
+        let template = compile("{{ if boolean }}Hello!{{ else }}Goodbye!{{ endif }}");
         let context = context();
         let template_registry = other_templates();
         let formatter_registry = formatters();
@@ -383,7 +383,7 @@ mod test {
 
     #[test]
     fn test_if_else_not_taken() {
-        let template = compile("{% if null %}Hello!{% else %}Goodbye!{% endif %}");
+        let template = compile("{{ if null }}Hello!{{ else }}Goodbye!{{ endif }}");
         let context = context();
         let template_registry = other_templates();
         let formatter_registry = formatters();
@@ -396,7 +396,7 @@ mod test {
     #[test]
     fn test_nested_ifs() {
         let template = compile(
-            "{% if boolean %}Hi, {% if null %}there!{% else %}Hello!{% endif %}{% endif %}",
+            "{{ if boolean }}Hi, {{ if null }}there!{{ else }}Hello!{{ endif }}{{ endif }}",
         );
         let context = context();
         let template_registry = other_templates();
@@ -409,7 +409,7 @@ mod test {
 
     #[test]
     fn test_with() {
-        let template = compile("{% with nested %}{{value}}{%endwith%}");
+        let template = compile("{{ with nested }}{value}{{endwith}}");
         let context = context();
         let template_registry = other_templates();
         let formatter_registry = formatters();
@@ -421,7 +421,7 @@ mod test {
 
     #[test]
     fn test_named_with() {
-        let template = compile("{% with nested as n %}{{ n.value }} {{ number }}{%endwith%}");
+        let template = compile("{{ with nested as n }}{ n.value } { number }{{endwith}}");
         let context = context();
         let template_registry = other_templates();
         let formatter_registry = formatters();
@@ -433,7 +433,7 @@ mod test {
 
     #[test]
     fn test_for_loop() {
-        let template = compile("{% for a in array %}{{ a }}{% endfor %}");
+        let template = compile("{{ for a in array }}{ a }{{ endfor }}");
         let context = context();
         let template_registry = other_templates();
         let formatter_registry = formatters();
@@ -445,7 +445,7 @@ mod test {
 
     #[test]
     fn test_for_loop_index() {
-        let template = compile("{% for a in array %}{{ @index }}{% endfor %}");
+        let template = compile("{{ for a in array }}{ @index }{{ endfor }}");
         let context = context();
         let template_registry = other_templates();
         let formatter_registry = formatters();
@@ -458,7 +458,7 @@ mod test {
     #[test]
     fn test_for_loop_first() {
         let template =
-            compile("{% for a in array %}{%if @first %}{{ @index }}{% endif %}{% endfor %}");
+            compile("{{ for a in array }}{{if @first }}{ @index }{{ endif }}{{ endfor }}");
         let context = context();
         let template_registry = other_templates();
         let formatter_registry = formatters();
@@ -470,7 +470,7 @@ mod test {
 
     #[test]
     fn test_whitespace_stripping_value() {
-        let template = compile("1  \n\t   {{- number -}}  \n   1");
+        let template = compile("1  \n\t   {- number -}  \n   1");
         let context = context();
         let template_registry = other_templates();
         let formatter_registry = formatters();
@@ -482,7 +482,7 @@ mod test {
 
     #[test]
     fn test_call() {
-        let template = compile("{% call my_macro with nested %}");
+        let template = compile("{{ call my_macro with nested }}");
         let context = context();
         let template_registry = other_templates();
         let formatter_registry = formatters();
@@ -494,7 +494,7 @@ mod test {
 
     #[test]
     fn test_formatter() {
-        let template = compile("{{ nested.value | my_formatter }}");
+        let template = compile("{ nested.value | my_formatter }");
         let context = context();
         let template_registry = other_templates();
         let formatter_registry = formatters();
@@ -506,7 +506,7 @@ mod test {
 
     #[test]
     fn test_unknown() {
-        let template = compile("{{ foobar }}");
+        let template = compile("{ foobar }");
         let context = context();
         let template_registry = other_templates();
         let formatter_registry = formatters();

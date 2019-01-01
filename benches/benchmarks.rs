@@ -8,9 +8,9 @@ use criterion::Criterion;
 use tinytemplate::TinyTemplate;
 
 static TABLE_SOURCE: &'static str = "<html>
-    {% for row in table %}
-        <tr>{% for value in row %}<td>{{value}}</td>{% endfor %}</tr>
-    {% endfor %}
+    {{ for row in table }}
+        <tr>{{ for value in row }}<td>{value}</td>{{ endfor }}</tr>
+    {{ endfor }}
 </html>";
 
 #[derive(Serialize)]
