@@ -21,10 +21,8 @@ use template::Template;
 TODO:
 - Implement error detail handling by calculating the line/column when an error occurs
 - HTML escaping?
-- Benchmark
 - Write documentation
 - CI builds
-- Build my own clone of serde_json::Value so I can drop serde_json?
 */
 pub type Formatter = Fn(&Value, &mut String) -> Result<()>;
 
