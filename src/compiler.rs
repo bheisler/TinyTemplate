@@ -1,11 +1,12 @@
 use error::Error::*;
 use error::Result;
-use instruction::{Branch, Instruction, Path};
+use instruction::{Instruction, Path};
 
 const UNKNOWN: usize = std::usize::MAX;
 
 enum Block {
     Branch(usize),
+    For(usize),
     With,
 }
 
@@ -39,23 +40,13 @@ impl<'template> TemplateCompiler<'template> {
                         let path = parse_path(rest);
                         self.block_stack
                             .push(Block::Branch(self.instructions.len()));
-                        self.instructions.push(Instruction::Branch(Branch {
-                            path,
-                            invert: true,
-                            target: UNKNOWN,
-                        }));
+                        self.instructions
+                            .push(Instruction::Branch(path, true, UNKNOWN));
                     }
                     "else" => {
                         self.expect_empty(rest)?;
                         let num_instructions = self.instructions.len() + 1;
-                        let path_clone: Path<'template> =
-                            self.with_unclosed_branch(|b| match b {
-                                Instruction::Branch(branch) => {
-                                    branch.target = num_instructions;
-                                    Ok(branch.path.clone())
-                                }
-                                _ => panic!(),
-                            })?;
+                        self.close_branch(num_instructions)?;
                         self.block_stack
                             .push(Block::Branch(self.instructions.len()));
                         self.instructions.push(Instruction::Goto(UNKNOWN))
@@ -63,25 +54,15 @@ impl<'template> TemplateCompiler<'template> {
                     "endif" => {
                         self.expect_empty(rest)?;
                         let num_instructions = self.instructions.len();
-                        self.with_unclosed_branch(|b| match b {
-                            Instruction::Branch(branch) => {
-                                branch.target = num_instructions;
-                                Ok(())
-                            }
-                            Instruction::Goto(target) => {
-                                *target = num_instructions;
-                                Ok(())
-                            }
-                            _ => panic!(),
-                        })?;
+                        self.close_branch(num_instructions)?;
                     }
                     "with" => {
                         let (path, name) = self.parse_with(rest);
-                        let instructions = match name {
+                        let instruction = match name {
                             Some(name) => Instruction::PushNamedContext(path, name),
                             None => Instruction::PushContext(path),
                         };
-                        self.instructions.push(instructions);
+                        self.instructions.push(instruction);
                         self.block_stack.push(Block::With);
                     }
                     "endwith" => {
@@ -93,6 +74,20 @@ impl<'template> TemplateCompiler<'template> {
                                 msg: "Found a closing endwith that doesn't match with a preceeding with.".to_string()
                             });
                         }
+                    }
+                    "for" => {
+                        let (path, name) = self.parse_for(rest)?;
+                        self.instructions
+                            .push(Instruction::PushIterationContext(path, name));
+                        self.block_stack.push(Block::For(self.instructions.len()));
+                        self.instructions.push(Instruction::Iterate(UNKNOWN));
+                    }
+                    "endfor" => {
+                        self.expect_empty(rest)?;
+                        let num_instructions = self.instructions.len() + 1;
+                        let goto_target = self.close_for(num_instructions)?;
+                        self.instructions.push(Instruction::Goto(goto_target));
+                        self.instructions.push(Instruction::PopContext);
                     }
                     _ => {
                         return Err(ParseError {
@@ -122,17 +117,41 @@ impl<'template> TemplateCompiler<'template> {
         }
     }
 
-    fn with_unclosed_branch<F, T>(&mut self, f: F) -> Result<T>
-    where
-        F: FnOnce(&mut Instruction<'template>) -> Result<T>,
-    {
+    fn close_branch(&mut self, new_target: usize) -> Result<()> {
         let branch_block = self.block_stack.pop();
         if let Some(Block::Branch(index)) = branch_block {
-            f(&mut self.instructions[index])
+            match &mut self.instructions[index] {
+                Instruction::Branch(_, _, target) => {
+                    *target = new_target;
+                    Ok(())
+                }
+                Instruction::Goto(target) => {
+                    *target = new_target;
+                    Ok(())
+                }
+                _ => panic!(),
+            }
         } else {
             Err(ParseError {
                 msg: "Found a closing endif or else which doesn't match with a preceding if."
                     .to_string(),
+            })
+        }
+    }
+
+    fn close_for(&mut self, new_target: usize) -> Result<usize> {
+        let branch_block = self.block_stack.pop();
+        if let Some(Block::For(index)) = branch_block {
+            match &mut self.instructions[index] {
+                Instruction::Iterate(target) => {
+                    *target = new_target;
+                    Ok(index)
+                }
+                _ => panic!(),
+            }
+        } else {
+            Err(ParseError {
+                msg: "Found a closing endfor which doesn't match with a preceding for.".to_string(),
             })
         }
     }
@@ -196,6 +215,19 @@ impl<'template> TemplateCompiler<'template> {
             (path, None)
         }
     }
+
+    fn parse_for(&self, for_text: &'template str) -> Result<(Path<'template>, &'template str)> {
+        if let Some(index) = for_text.find(" in ") {
+            let (name_str, path_str) = for_text.split_at(index);
+            let name = name_str.trim();
+            let path = parse_path(path_str[" in ".len()..].trim());
+            Ok((path, name))
+        } else {
+            Err(ParseError {
+                msg: format!("Unable to parse for block text '{}'", for_text),
+            })
+        }
+    }
 }
 
 #[cfg(test)]
@@ -207,14 +239,6 @@ mod test {
 
     fn compile(text: &'static str) -> Result<Vec<Instruction<'static>>> {
         TemplateCompiler::new(text).compile()
-    }
-
-    fn branch(path: Path<'static>, invert: bool, target: usize) -> Instruction<'static> {
-        Instruction::Branch(::instruction::Branch {
-            path,
-            invert,
-            target,
-        })
     }
 
     #[test]
@@ -256,7 +280,7 @@ mod test {
         let text = "{% if foo %}Hello!{% endif %}";
         let instructions = compile(text).unwrap();
         assert_eq!(2, instructions.len());
-        assert_eq!(&branch(vec!["foo"], true, 2), &instructions[0]);
+        assert_eq!(&Branch(vec!["foo"], true, 2), &instructions[0]);
         assert_eq!(&Literal("Hello!"), &instructions[1]);
     }
 
@@ -265,7 +289,7 @@ mod test {
         let text = "{% if foo %}Hello!{% else %}Goodbye!{% endif %}";
         let instructions = compile(text).unwrap();
         assert_eq!(4, instructions.len());
-        assert_eq!(&branch(vec!["foo"], true, 3), &instructions[0]);
+        assert_eq!(&Branch(vec!["foo"], true, 3), &instructions[0]);
         assert_eq!(&Literal("Hello!"), &instructions[1]);
         assert_eq!(&Goto(4), &instructions[2]);
         assert_eq!(&Literal("Goodbye!"), &instructions[3]);
@@ -289,6 +313,21 @@ mod test {
         assert_eq!(&PushNamedContext(vec!["foo"], "bar"), &instructions[0]);
         assert_eq!(&Literal("Hello!"), &instructions[1]);
         assert_eq!(&PopContext, &instructions[2]);
+    }
+
+    #[test]
+    fn test_foreach() {
+        let text = "{% for foo in bar.baz %}{{ foo }}{% endfor %}";
+        let instructions = compile(text).unwrap();
+        assert_eq!(5, instructions.len());
+        assert_eq!(
+            &PushIterationContext(vec!["bar", "baz"], "foo"),
+            &instructions[0]
+        );
+        assert_eq!(&Iterate(4), &instructions[1]);
+        assert_eq!(&Value(vec!["foo"]), &instructions[2]);
+        assert_eq!(&Goto(1), &instructions[3]);
+        assert_eq!(&PopContext, &instructions[4]);
     }
 
     #[test]

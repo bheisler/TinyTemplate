@@ -1,9 +1,10 @@
 use compiler::TemplateCompiler;
 use error::Error::*;
 use error::{Error, Result};
-use instruction::{Branch, Instruction, PathSlice};
+use instruction::{Instruction, PathSlice};
 use serde_json::Value;
 use std::fmt::Write;
+use std::slice;
 
 fn lookup_error(step: &str, path: PathSlice, current: &Value) -> Error {
     let avail_str = if let Value::Object(object_map) = current {
@@ -47,6 +48,15 @@ fn unprintable_error(path: PathSlice) -> Error {
     }
 }
 
+fn not_iterable_error(path: PathSlice) -> Error {
+    RenderError {
+        msg: format!(
+            "Expected an array for path '{}' but found a non-iterable value.",
+            path_to_str(path)
+        ),
+    }
+}
+
 fn path_to_str(path: PathSlice) -> String {
     let mut path_str = "".to_string();
     for (i, step) in path.iter().enumerate() {
@@ -59,19 +69,30 @@ fn path_to_str(path: PathSlice) -> String {
 }
 
 enum ContextElement<'render, 'template> {
-    ObjectContext(&'render Value),
-    NamedContext(&'template str, &'render Value),
+    Object(&'render Value),
+    Named(&'template str, &'render Value),
+    Iteration(
+        &'template str,
+        &'render Value,
+        isize,
+        slice::Iter<'render, Value>,
+    ),
 }
 
 struct RenderContext<'render, 'template> {
     context_stack: Vec<ContextElement<'render, 'template>>,
 }
 impl<'render, 'template> RenderContext<'render, 'template> {
-    pub fn lookup(&self, path: PathSlice) -> Result<&'render Value> {
+    fn lookup(&self, path: PathSlice) -> Result<&'render Value> {
         for stack_layer in self.context_stack.iter().rev() {
             match stack_layer {
-                ContextElement::ObjectContext(obj) => return self.lookup_in(path, obj),
-                ContextElement::NamedContext(name, obj) => {
+                ContextElement::Object(obj) => return self.lookup_in(path, obj),
+                ContextElement::Named(name, obj) => {
+                    if *name == path[0] {
+                        return self.lookup_in(&path[1..], obj);
+                    }
+                }
+                ContextElement::Iteration(name, obj, _, _) => {
                     if *name == path[0] {
                         return self.lookup_in(&path[1..], obj);
                     }
@@ -111,7 +132,7 @@ impl<'template> Template<'template> {
         let mut output = String::with_capacity(self.template_len);
         let mut program_counter = 0;
         let mut render_context = RenderContext {
-            context_stack: vec![ContextElement::ObjectContext(context)],
+            context_stack: vec![ContextElement::Object(context)],
         };
 
         while program_counter < self.instructions.len() {
@@ -131,13 +152,7 @@ impl<'template> Template<'template> {
                     };
                     program_counter += 1;
                 }
-                Instruction::Branch(branch) => {
-                    let Branch {
-                        path,
-                        invert,
-                        target,
-                    } = branch;
-
+                Instruction::Branch(path, invert, target) => {
                     let value_to_render = render_context.lookup(path)?;
                     let mut truthy = match value_to_render {
                         Value::Null => false,
@@ -169,14 +184,24 @@ impl<'template> Template<'template> {
                     let context_value = render_context.lookup(path)?;
                     render_context
                         .context_stack
-                        .push(ContextElement::ObjectContext(context_value));
+                        .push(ContextElement::Object(context_value));
                     program_counter += 1;
                 }
                 Instruction::PushNamedContext(path, name) => {
                     let context_value = render_context.lookup(path)?;
                     render_context
                         .context_stack
-                        .push(ContextElement::NamedContext(name, context_value));
+                        .push(ContextElement::Named(name, context_value));
+                    program_counter += 1;
+                }
+                Instruction::PushIterationContext(path, name) => {
+                    let context_value = render_context.lookup(path)?;
+                    match context_value {
+                        Value::Array(ref arr) => render_context.context_stack.push(
+                            ContextElement::Iteration(name, &Value::Null, -1, arr.iter()),
+                        ),
+                        _ => return Err(not_iterable_error(path)),
+                    };
                     program_counter += 1;
                 }
                 Instruction::PopContext => {
@@ -185,6 +210,21 @@ impl<'template> Template<'template> {
                 }
                 Instruction::Goto(target) => {
                     program_counter = *target;
+                }
+                Instruction::Iterate(target) => {
+                    match render_context.context_stack.last_mut() {
+                        Some(ContextElement::Iteration(_, val, index, iter)) => match iter.next() {
+                            Some(new_val) => {
+                                *val = new_val;
+                                *index += 1;
+                                program_counter += 1;
+                            }
+                            None => {
+                                program_counter = *target;
+                            }
+                        },
+                        _ => panic!("Malformed program."),
+                    };
                 }
             }
         }
@@ -312,6 +352,14 @@ mod test {
         let context = context();
         let string = template.render(&context).unwrap();
         assert_eq!("10 5", &string);
+    }
+
+    #[test]
+    fn test_for_loop() {
+        let template = compile("{% for a in array %}{{ a }}{% endfor %}");
+        let context = context();
+        let string = template.render(&context).unwrap();
+        assert_eq!("123", &string);
     }
 
     #[test]

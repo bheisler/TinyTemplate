@@ -19,7 +19,6 @@ use template::Template;
 /*
 TODO:
 - Implement parsing using Jinja2-like syntax
-    - For {% for foo in bar.baz %}{% endfor %}
     - Whitespace stripping {{- foo.bar -}}
     - Comments {# Foo bar baz #}
     - Call {% call macro_name foo.bar %}
