@@ -10,10 +10,12 @@ enum Block {
     With,
 }
 
+static KNOWN_KEYWORDS: [&'static str; 3] = ["@index", "@first", "@last"];
+
 fn parse_path(text: &str) -> Result<Path> {
     if !text.starts_with('@') {
         Ok(text.split('.').collect::<Vec<_>>())
-    } else if text == "@index" {
+    } else if KNOWN_KEYWORDS.iter().any(|k| *k == text) {
         Ok(vec![text])
     } else {
         Err(ParseError {

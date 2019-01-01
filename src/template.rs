@@ -16,6 +16,7 @@ enum ContextElement<'render, 'template> {
         &'template str,
         &'render Value,
         usize,
+        usize,
         slice::Iter<'render, Value>,
     ),
 }
@@ -33,7 +34,7 @@ impl<'render, 'template> RenderContext<'render, 'template> {
                         return self.lookup_in(&path[1..], obj);
                     }
                 }
-                ContextElement::Iteration(name, obj, _, _) => {
+                ContextElement::Iteration(name, obj, _, _, _) => {
                     if *name == path[0] {
                         return self.lookup_in(&path[1..], obj);
                     }
@@ -54,10 +55,10 @@ impl<'render, 'template> RenderContext<'render, 'template> {
         Ok(current)
     }
 
-    fn lookup_index(&self) -> Result<usize> {
+    fn lookup_index(&self) -> Result<(usize, usize)> {
         for stack_layer in self.context_stack.iter().rev() {
             match stack_layer {
-                ContextElement::Iteration(_, _, index, _) => return Ok(*index),
+                ContextElement::Iteration(_, _, index, length, _) => return Ok((*index, *length)),
                 _ => continue,
             }
         }
@@ -115,7 +116,14 @@ impl<'template> Template<'template> {
                     if first.starts_with('@') {
                         match first {
                             "@index" => {
-                                write!(output, "{}", render_context.lookup_index()?).unwrap()
+                                write!(output, "{}", render_context.lookup_index()?.0).unwrap()
+                            }
+                            "@first" => {
+                                write!(output, "{}", render_context.lookup_index()?.0 == 0).unwrap()
+                            }
+                            "@last" => {
+                                let (index, length) = render_context.lookup_index()?;
+                                write!(output, "{}", index == length).unwrap()
                             }
                             _ => panic!(), // This should have been caught by the parser.
                         }
@@ -134,24 +142,37 @@ impl<'template> Template<'template> {
                     program_counter += 1;
                 }
                 Instruction::Branch(path, target) => {
-                    let value_to_render = render_context.lookup(path)?;
-                    let mut truthy = match value_to_render {
-                        Value::Null => true,
-                        Value::Bool(b) => !*b,
-                        Value::Number(n) => match n.as_f64() {
-                            Some(float) => float != 0.0,
-                            None => {
+                    let first = *path.first().unwrap();
+                    let mut falsy = if first.starts_with('@') {
+                        match first {
+                            "@index" => render_context.lookup_index()?.0 == 0,
+                            "@first" => render_context.lookup_index()?.0 != 0,
+                            "@last" => {
+                                let (index, length) = render_context.lookup_index()?;
+                                index != length
+                            }
+                            _ => panic!(), // This should have been caught by the parser.
+                        }
+                    } else {
+                        let value_to_render = render_context.lookup(path)?;
+                        match value_to_render {
+                            Value::Null => true,
+                            Value::Bool(b) => !*b,
+                            Value::Number(n) => match n.as_f64() {
+                                Some(float) => float != 0.0,
+                                None => {
+                                    return Err(truthiness_error(path));
+                                }
+                            },
+                            Value::String(s) => !s.is_empty(),
+                            Value::Array(arr) => !arr.is_empty(),
+                            Value::Object(_) => {
                                 return Err(truthiness_error(path));
                             }
-                        },
-                        Value::String(s) => !s.is_empty(),
-                        Value::Array(arr) => !arr.is_empty(),
-                        Value::Object(_) => {
-                            return Err(truthiness_error(path));
                         }
                     };
 
-                    if truthy {
+                    if falsy {
                         program_counter = *target;
                     } else {
                         program_counter += 1;
@@ -179,6 +200,7 @@ impl<'template> Template<'template> {
                                 name,
                                 &Value::Null,
                                 std::usize::MAX,
+                                arr.len(),
                                 arr.iter(),
                             ))
                         }
@@ -195,16 +217,18 @@ impl<'template> Template<'template> {
                 }
                 Instruction::Iterate(target) => {
                     match render_context.context_stack.last_mut() {
-                        Some(ContextElement::Iteration(_, val, index, iter)) => match iter.next() {
-                            Some(new_val) => {
-                                *val = new_val;
-                                *index = index.wrapping_add(1);
-                                program_counter += 1;
+                        Some(ContextElement::Iteration(_, val, index, _, iter)) => {
+                            match iter.next() {
+                                Some(new_val) => {
+                                    *val = new_val;
+                                    *index = index.wrapping_add(1);
+                                    program_counter += 1;
+                                }
+                                None => {
+                                    program_counter = *target;
+                                }
                             }
-                            None => {
-                                program_counter = *target;
-                            }
-                        },
+                        }
                         _ => panic!("Malformed program."),
                     };
                 }
@@ -429,6 +453,19 @@ mod test {
             .render(&context, &template_registry, &formatter_registry)
             .unwrap();
         assert_eq!("012", &string);
+    }
+
+    #[test]
+    fn test_for_loop_first() {
+        let template =
+            compile("{% for a in array %}{%if @first %}{{ @index }}{% endif %}{% endfor %}");
+        let context = context();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
+        assert_eq!("0", &string);
     }
 
     #[test]
