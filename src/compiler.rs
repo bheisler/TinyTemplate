@@ -14,7 +14,6 @@ fn parse_path(text: &str) -> Path {
 }
 
 pub(crate) struct TemplateCompiler<'template> {
-    full_text: &'template str,
     remaining_text: &'template str,
     instructions: Vec<Instruction<'template>>,
     block_stack: Vec<Block>,
@@ -22,7 +21,6 @@ pub(crate) struct TemplateCompiler<'template> {
 impl<'template> TemplateCompiler<'template> {
     pub fn new(text: &'template str) -> TemplateCompiler<'template> {
         TemplateCompiler {
-            full_text: text,
             remaining_text: text,
             instructions: vec![],
             block_stack: vec![],
@@ -68,8 +66,12 @@ impl<'template> TemplateCompiler<'template> {
                         self.with_unclosed_branch(|b| b.target = num_instructions)?;
                     }
                     "with" => {
-                        let path = parse_path(rest);
-                        self.instructions.push(Instruction::PushContext(path));
+                        let (path, name) = self.parse_with(rest);
+                        let instructions = match name {
+                            Some(name) => Instruction::PushNamedContext(path, name),
+                            None => Instruction::PushContext(path),
+                        };
+                        self.instructions.push(instructions);
                         self.block_stack.push(Block::With);
                     }
                     "endwith" => {
@@ -176,6 +178,18 @@ impl<'template> TemplateCompiler<'template> {
             })
         }
     }
+
+    fn parse_with(&self, with_text: &'template str) -> (Path<'template>, Option<&'template str>) {
+        if let Some(index) = with_text.find(" as ") {
+            let (path_str, name_str) = with_text.split_at(index);
+            let path = parse_path(path_str.trim());
+            let name = name_str[" as ".len()..].trim();
+            (path, Some(name))
+        } else {
+            let path = parse_path(with_text);
+            (path, None)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -257,6 +271,16 @@ mod test {
         let instructions = compile(text).unwrap();
         assert_eq!(3, instructions.len());
         assert_eq!(&PushContext(vec!["foo"]), &instructions[0]);
+        assert_eq!(&Literal("Hello!"), &instructions[1]);
+        assert_eq!(&PopContext, &instructions[2]);
+    }
+
+    #[test]
+    fn test_named_with() {
+        let text = "{% with foo as bar %}Hello!{% endwith %}";
+        let instructions = compile(text).unwrap();
+        assert_eq!(3, instructions.len());
+        assert_eq!(&PushNamedContext(vec!["foo"], "bar"), &instructions[0]);
         assert_eq!(&Literal("Hello!"), &instructions[1]);
         assert_eq!(&PopContext, &instructions[2]);
     }

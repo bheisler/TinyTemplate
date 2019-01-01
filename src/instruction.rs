@@ -1,4 +1,5 @@
 pub(crate) type Path<'template> = Vec<&'template str>;
+pub(crate) type PathSlice<'a, 'template> = &'a [&'template str];
 
 #[derive(Eq, PartialEq, Debug, Clone)]
 pub(crate) struct Branch<'template> {
@@ -13,5 +14,6 @@ pub(crate) enum Instruction<'template> {
     Value(Path<'template>),
     Branch(Branch<'template>),
     PushContext(Path<'template>),
+    PushNamedContext(Path<'template>, &'template str),
     PopContext,
 }

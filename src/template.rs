@@ -1,12 +1,11 @@
 use compiler::TemplateCompiler;
 use error::Error::*;
 use error::{Error, Result};
-use instruction::{Branch, Instruction, Path};
-use serde::Serialize;
-use serde_json::{self, Value};
+use instruction::{Branch, Instruction, PathSlice};
+use serde_json::Value;
 use std::fmt::Write;
 
-fn lookup_error(step: &str, path: &Path, current: &Value) -> Error {
+fn lookup_error(step: &str, path: PathSlice, current: &Value) -> Error {
     let avail_str = if let Value::Object(object_map) = current {
         let mut avail_str = " Available values at this level are '".to_string();
         for (i, key) in object_map.keys().enumerate() {
@@ -30,7 +29,7 @@ fn lookup_error(step: &str, path: &Path, current: &Value) -> Error {
     }
 }
 
-fn truthiness_error(path: &Path) -> Error {
+fn truthiness_error(path: PathSlice) -> Error {
     RenderError {
         msg: format!(
             "Path '{}' produced a value which could not be checked for truthiness.",
@@ -39,7 +38,7 @@ fn truthiness_error(path: &Path) -> Error {
     }
 }
 
-fn unprintable_error(path: &Path) -> Error {
+fn unprintable_error(path: PathSlice) -> Error {
     RenderError {
         msg: format!(
             "Expected a printable value for path '{}' but found array or object.",
@@ -48,7 +47,7 @@ fn unprintable_error(path: &Path) -> Error {
     }
 }
 
-fn path_to_str(path: &Path) -> String {
+fn path_to_str(path: PathSlice) -> String {
     let mut path_str = "".to_string();
     for (i, step) in path.iter().enumerate() {
         path_str.push_str(step);
@@ -59,12 +58,31 @@ fn path_to_str(path: &Path) -> String {
     path_str
 }
 
-struct RenderContext<'render> {
-    context_stack: Vec<&'render Value>,
+enum ContextElement<'render, 'template> {
+    ObjectContext(&'render Value),
+    NamedContext(&'template str, &'render Value),
 }
-impl<'render> RenderContext<'render> {
-    pub fn lookup(&self, path: &Path) -> Result<&'render Value> {
-        let mut current = self.context_stack[self.context_stack.len() - 1];
+
+struct RenderContext<'render, 'template> {
+    context_stack: Vec<ContextElement<'render, 'template>>,
+}
+impl<'render, 'template> RenderContext<'render, 'template> {
+    pub fn lookup(&self, path: PathSlice) -> Result<&'render Value> {
+        for stack_layer in self.context_stack.iter().rev() {
+            match stack_layer {
+                ContextElement::ObjectContext(obj) => return self.lookup_in(path, obj),
+                ContextElement::NamedContext(name, obj) => {
+                    if *name == path[0] {
+                        return self.lookup_in(&path[1..], obj);
+                    }
+                }
+            }
+        }
+        panic!("Attempted to do a lookup with an empty context stack. That shouldn't be possible.")
+    }
+
+    fn lookup_in(&self, path: PathSlice, object: &'render Value) -> Result<&'render Value> {
+        let mut current = object;
         for step in path.iter() {
             match current.get(step) {
                 Some(next) => current = next,
@@ -93,7 +111,7 @@ impl<'template> Template<'template> {
         let mut output = String::with_capacity(self.template_len);
         let mut program_counter = 0;
         let mut render_context = RenderContext {
-            context_stack: vec![context],
+            context_stack: vec![ContextElement::ObjectContext(context)],
         };
 
         while program_counter < self.instructions.len() {
@@ -149,7 +167,16 @@ impl<'template> Template<'template> {
                 }
                 Instruction::PushContext(path) => {
                     let context_value = render_context.lookup(path)?;
-                    render_context.context_stack.push(context_value);
+                    render_context
+                        .context_stack
+                        .push(ContextElement::ObjectContext(context_value));
+                    program_counter += 1;
+                }
+                Instruction::PushNamedContext(path, name) => {
+                    let context_value = render_context.lookup(path)?;
+                    render_context
+                        .context_stack
+                        .push(ContextElement::NamedContext(name, context_value));
                     program_counter += 1;
                 }
                 Instruction::PopContext => {
@@ -274,6 +301,14 @@ mod test {
         let context = context();
         let string = template.render(&context).unwrap();
         assert_eq!("10", &string);
+    }
+
+    #[test]
+    fn test_named_with() {
+        let template = compile("{% with nested as n %}{{ n.value }} {{ number }}{%endwith%}");
+        let context = context();
+        let string = template.render(&context).unwrap();
+        assert_eq!("10 5", &string);
     }
 
     #[test]
