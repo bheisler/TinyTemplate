@@ -48,22 +48,32 @@ impl<'template> TemplateCompiler<'template> {
                     "else" => {
                         self.expect_empty(rest)?;
                         let num_instructions = self.instructions.len() + 1;
-                        let path_clone: Path<'template> = self.with_unclosed_branch(|b| {
-                            b.target = num_instructions;
-                            b.path.clone()
-                        })?;
+                        let path_clone: Path<'template> =
+                            self.with_unclosed_branch(|b| match b {
+                                Instruction::Branch(branch) => {
+                                    branch.target = num_instructions;
+                                    Ok(branch.path.clone())
+                                }
+                                _ => panic!(),
+                            })?;
                         self.block_stack
                             .push(Block::Branch(self.instructions.len()));
-                        self.instructions.push(Instruction::Branch(Branch {
-                            path: path_clone,
-                            invert: false,
-                            target: UNKNOWN,
-                        }))
+                        self.instructions.push(Instruction::Goto(UNKNOWN))
                     }
                     "endif" => {
                         self.expect_empty(rest)?;
                         let num_instructions = self.instructions.len();
-                        self.with_unclosed_branch(|b| b.target = num_instructions)?;
+                        self.with_unclosed_branch(|b| match b {
+                            Instruction::Branch(branch) => {
+                                branch.target = num_instructions;
+                                Ok(())
+                            }
+                            Instruction::Goto(target) => {
+                                *target = num_instructions;
+                                Ok(())
+                            }
+                            _ => panic!(),
+                        })?;
                     }
                     "with" => {
                         let (path, name) = self.parse_with(rest);
@@ -114,15 +124,11 @@ impl<'template> TemplateCompiler<'template> {
 
     fn with_unclosed_branch<F, T>(&mut self, f: F) -> Result<T>
     where
-        F: FnOnce(&mut Branch<'template>) -> T,
+        F: FnOnce(&mut Instruction<'template>) -> Result<T>,
     {
         let branch_block = self.block_stack.pop();
         if let Some(Block::Branch(index)) = branch_block {
-            if let Instruction::Branch(branch) = &mut self.instructions[index] {
-                Ok(f(branch))
-            } else {
-                unreachable!()
-            }
+            f(&mut self.instructions[index])
         } else {
             Err(ParseError {
                 msg: "Found a closing endif or else which doesn't match with a preceding if."
@@ -261,7 +267,7 @@ mod test {
         assert_eq!(4, instructions.len());
         assert_eq!(&branch(vec!["foo"], true, 3), &instructions[0]);
         assert_eq!(&Literal("Hello!"), &instructions[1]);
-        assert_eq!(&branch(vec!["foo"], false, 4), &instructions[2]);
+        assert_eq!(&Goto(4), &instructions[2]);
         assert_eq!(&Literal("Goodbye!"), &instructions[3]);
     }
 

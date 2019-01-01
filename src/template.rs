@@ -183,6 +183,9 @@ impl<'template> Template<'template> {
                     render_context.context_stack.pop();
                     program_counter += 1;
                 }
+                Instruction::Goto(target) => {
+                    program_counter = *target;
+                }
             }
         }
 

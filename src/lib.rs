@@ -19,7 +19,6 @@ use template::Template;
 /*
 TODO:
 - Implement parsing using Jinja2-like syntax
-    - With/as {% with foo.bar as bar %}{{bar}}{% endwith %}
     - For {% for foo in bar.baz %}{% endfor %}
     - Whitespace stripping {{- foo.bar -}}
     - Comments {# Foo bar baz #}

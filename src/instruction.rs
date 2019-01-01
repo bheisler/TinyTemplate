@@ -16,4 +16,5 @@ pub(crate) enum Instruction<'template> {
     PushContext(Path<'template>),
     PushNamedContext(Path<'template>, &'template str),
     PopContext,
+    Goto(usize),
 }
