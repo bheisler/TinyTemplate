@@ -152,27 +152,23 @@ impl<'template> Template<'template> {
                     };
                     program_counter += 1;
                 }
-                Instruction::Branch(path, invert, target) => {
+                Instruction::Branch(path, target) => {
                     let value_to_render = render_context.lookup(path)?;
                     let mut truthy = match value_to_render {
-                        Value::Null => false,
-                        Value::Bool(b) => *b,
+                        Value::Null => true,
+                        Value::Bool(b) => !*b,
                         Value::Number(n) => match n.as_f64() {
-                            Some(float) => float == 0.0,
+                            Some(float) => float != 0.0,
                             None => {
                                 return Err(truthiness_error(path));
                             }
                         },
-                        Value::String(s) => s == "",
-                        Value::Array(arr) => arr.is_empty(),
+                        Value::String(s) => !s.is_empty(),
+                        Value::Array(arr) => !arr.is_empty(),
                         Value::Object(_) => {
                             return Err(truthiness_error(path));
                         }
                     };
-
-                    if *invert {
-                        truthy = !truthy;
-                    }
 
                     if truthy {
                         program_counter = *target;
@@ -360,6 +356,14 @@ mod test {
         let context = context();
         let string = template.render(&context).unwrap();
         assert_eq!("123", &string);
+    }
+
+    #[test]
+    fn test_whitespace_stripping_value() {
+        let template = compile("1  \n\t   {{- number -}}  \n   1");
+        let context = context();
+        let string = template.render(&context).unwrap();
+        assert_eq!("151", &string);
     }
 
     #[test]

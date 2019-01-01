@@ -18,6 +18,7 @@ pub(crate) struct TemplateCompiler<'template> {
     remaining_text: &'template str,
     instructions: Vec<Instruction<'template>>,
     block_stack: Vec<Block>,
+    trim_next: bool,
 }
 impl<'template> TemplateCompiler<'template> {
     pub fn new(text: &'template str) -> TemplateCompiler<'template> {
@@ -25,6 +26,7 @@ impl<'template> TemplateCompiler<'template> {
             remaining_text: text,
             instructions: vec![],
             block_stack: vec![],
+            trim_next: false,
         }
     }
 
@@ -40,8 +42,7 @@ impl<'template> TemplateCompiler<'template> {
                         let path = parse_path(rest);
                         self.block_stack
                             .push(Block::Branch(self.instructions.len()));
-                        self.instructions
-                            .push(Instruction::Branch(path, true, UNKNOWN));
+                        self.instructions.push(Instruction::Branch(path, UNKNOWN));
                     }
                     "else" => {
                         self.expect_empty(rest)?;
@@ -100,7 +101,11 @@ impl<'template> TemplateCompiler<'template> {
                     msg: "Unexpected '{'".to_string(),
                 });
             } else {
-                let text = self.consume_text();
+                let mut text = self.consume_text();
+                if self.trim_next {
+                    text = text.trim_start();
+                    self.trim_next = false;
+                }
                 self.instructions.push(Instruction::Literal(text));
             }
         }
@@ -121,7 +126,7 @@ impl<'template> TemplateCompiler<'template> {
         let branch_block = self.block_stack.pop();
         if let Some(Block::Branch(index)) = branch_block {
             match &mut self.instructions[index] {
-                Instruction::Branch(_, _, target) => {
+                Instruction::Branch(_, target) => {
                     *target = new_target;
                     Ok(())
                 }
@@ -168,15 +173,41 @@ impl<'template> TemplateCompiler<'template> {
 
     fn consume_value(&mut self) -> Result<Path<'template>> {
         let tag = self.consume_tag("}}")?;
-        let path = &tag[2..(tag.len() - 2)].trim();
+        let mut path = tag[2..(tag.len() - 2)].trim();
+        if path.starts_with('-') {
+            path = path[1..].trim();
+            self.trim_last_whitespace();
+        }
+        if path.ends_with('-') {
+            path = path[0..path.len() - 1].trim();
+            self.trim_next_whitespace();
+        }
         Ok(parse_path(path))
+    }
+
+    fn trim_last_whitespace(&mut self) {
+        if let Some(Instruction::Literal(text)) = self.instructions.last_mut() {
+            *text = text.trim_end();
+        }
+    }
+
+    fn trim_next_whitespace(&mut self) {
+        self.trim_next = true;
     }
 
     fn consume_block(&mut self) -> Result<(&'template str, &'template str)> {
         let tag = self.consume_tag("%}")?;
-        let block = &tag[2..(tag.len() - 2)].trim();
+        let mut block = tag[2..(tag.len() - 2)].trim();
+        if block.starts_with('-') {
+            block = block[1..].trim();
+            self.trim_last_whitespace();
+        }
+        if block.ends_with('-') {
+            block = block[0..block.len() - 1].trim();
+            self.trim_next_whitespace();
+        }
         let discriminant = block.split_whitespace().next().unwrap_or(block);
-        let rest = &block[discriminant.len()..].trim();
+        let rest = block[discriminant.len()..].trim();
         Ok((discriminant, rest))
     }
 
@@ -280,7 +311,7 @@ mod test {
         let text = "{% if foo %}Hello!{% endif %}";
         let instructions = compile(text).unwrap();
         assert_eq!(2, instructions.len());
-        assert_eq!(&Branch(vec!["foo"], true, 2), &instructions[0]);
+        assert_eq!(&Branch(vec!["foo"], 2), &instructions[0]);
         assert_eq!(&Literal("Hello!"), &instructions[1]);
     }
 
@@ -289,7 +320,7 @@ mod test {
         let text = "{% if foo %}Hello!{% else %}Goodbye!{% endif %}";
         let instructions = compile(text).unwrap();
         assert_eq!(4, instructions.len());
-        assert_eq!(&Branch(vec!["foo"], true, 3), &instructions[0]);
+        assert_eq!(&Branch(vec!["foo"], 3), &instructions[0]);
         assert_eq!(&Literal("Hello!"), &instructions[1]);
         assert_eq!(&Goto(4), &instructions[2]);
         assert_eq!(&Literal("Goodbye!"), &instructions[3]);
@@ -328,6 +359,29 @@ mod test {
         assert_eq!(&Value(vec!["foo"]), &instructions[2]);
         assert_eq!(&Goto(1), &instructions[3]);
         assert_eq!(&PopContext, &instructions[4]);
+    }
+
+    #[test]
+    fn test_strip_whitespace_value() {
+        let text = "Hello,     {{- name -}}   , how are you?";
+        let instructions = compile(text).unwrap();
+        assert_eq!(3, instructions.len());
+        assert_eq!(&Literal("Hello,"), &instructions[0]);
+        assert_eq!(&Value(vec!["name"]), &instructions[1]);
+        assert_eq!(&Literal(", how are you?"), &instructions[2]);
+    }
+
+    #[test]
+    fn test_strip_whitespace_block() {
+        let text = "Hello,     {%- if name -%}    {{name}}    {%- endif -%}   , how are you?";
+        let instructions = compile(text).unwrap();
+        assert_eq!(6, instructions.len());
+        assert_eq!(&Literal("Hello,"), &instructions[0]);
+        assert_eq!(&Branch(vec!["name"], 5), &instructions[1]);
+        assert_eq!(&Literal(""), &instructions[2]);
+        assert_eq!(&Value(vec!["name"]), &instructions[3]);
+        assert_eq!(&Literal(""), &instructions[4]);
+        assert_eq!(&Literal(", how are you?"), &instructions[5]);
     }
 
     #[test]
