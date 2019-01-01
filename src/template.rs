@@ -1,3 +1,5 @@
+//! This module implements the bytecode interpreter that actually renders the templates.
+
 use compiler::TemplateCompiler;
 use error::Error::*;
 use error::*;
@@ -9,9 +11,17 @@ use std::fmt::Write;
 use std::slice;
 use Formatter;
 
+/// Enum defining the different kinds of records on the context stack.
 enum ContextElement<'render, 'template> {
+    /// Object contexts shadow everything below them on the stack, because every name is looked up
+    /// in this object.
     Object(&'render Value),
+    /// Named contexts shadow only one name. Any path that starts with that name is looked up in
+    /// this object, and all others are passed on down the stack.
     Named(&'template str, &'render Value),
+    /// Iteration contexts shadow one name with the current value of the iteration. They also
+    /// store the iteration state. The two usizes are the index of the current value and the length
+    /// of the array that we're iterating over.
     Iteration(
         &'template str,
         &'render Value,
@@ -21,10 +31,14 @@ enum ContextElement<'render, 'template> {
     ),
 }
 
+/// Helper struct which mostly exists so that I have somewhere to put functions that access the
+/// rendering context stack.
 struct RenderContext<'render, 'template> {
     context_stack: Vec<ContextElement<'render, 'template>>,
 }
 impl<'render, 'template> RenderContext<'render, 'template> {
+    /// Look up the given path in the context stack and return the value (if found) or an error (if
+    /// not)
     fn lookup(&self, path: PathSlice) -> Result<&'render Value> {
         for stack_layer in self.context_stack.iter().rev() {
             match stack_layer {
@@ -44,6 +58,8 @@ impl<'render, 'template> RenderContext<'render, 'template> {
         panic!("Attempted to do a lookup with an empty context stack. That shouldn't be possible.")
     }
 
+    /// Look up a path within a given value object and return the resulting value (if found) or
+    /// an error (if not)
     fn lookup_in(&self, path: PathSlice, object: &'render Value) -> Result<&'render Value> {
         let mut current = object;
         for step in path.iter() {
@@ -55,6 +71,7 @@ impl<'render, 'template> RenderContext<'render, 'template> {
         Ok(current)
     }
 
+    /// Look up the index and length values for the top iteration context on the stack.
     fn lookup_index(&self) -> Result<(usize, usize)> {
         for stack_layer in self.context_stack.iter().rev() {
             match stack_layer {
@@ -68,11 +85,15 @@ impl<'render, 'template> RenderContext<'render, 'template> {
     }
 }
 
+/// Structure representing a parsed template. It holds the bytecode program for rendering the
+/// template as well as the length of the original template string, which is used as a guess to
+/// pre-size the output string buffer.
 pub(crate) struct Template<'template> {
     instructions: Vec<Instruction<'template>>,
     template_len: usize,
 }
 impl<'template> Template<'template> {
+    /// Create a Template from the given template string.
     pub fn compile(text: &'template str) -> Result<Template> {
         Ok(Template {
             template_len: text.len(),
@@ -80,6 +101,7 @@ impl<'template> Template<'template> {
         })
     }
 
+    /// Render this template into a string and return it (or any error if one is encountered).
     pub fn render(
         &self,
         context: &Value,
@@ -93,6 +115,7 @@ impl<'template> Template<'template> {
         Ok(output)
     }
 
+    /// Render this template into a given string. Used for calling other templates.
     pub fn render_into(
         &self,
         context: &Value,
@@ -114,6 +137,9 @@ impl<'template> Template<'template> {
                 Instruction::Value(path) => {
                     let first = *path.first().unwrap();
                     if first.starts_with('@') {
+                        // Currently we just hard-code the special @-keywords and have special
+                        // lookup functions to use them because there are lifetime complexities with
+                        // looking up values that don't live for as long as the given context object.
                         match first {
                             "@index" => {
                                 write!(output, "{}", render_context.lookup_index()?.0).unwrap()
@@ -134,6 +160,7 @@ impl<'template> Template<'template> {
                     program_counter += 1;
                 }
                 Instruction::FormattedValue(path, name) => {
+                    // The @ keywords aren't suppored for formatted values. Should they be?
                     let value_to_render = render_context.lookup(path)?;
                     match formatter_registry.get(name) {
                         Some(formatter) => formatter(value_to_render, output)?,
@@ -193,6 +220,8 @@ impl<'template> Template<'template> {
                     program_counter += 1;
                 }
                 Instruction::PushIterationContext(path, name) => {
+                    // We push a context with an invalid index and no value and then wait for the
+                    // following Iterate instruction to set the index and value properly.
                     let context_value = render_context.lookup(path)?;
                     match context_value {
                         Value::Array(ref arr) => {
@@ -221,6 +250,8 @@ impl<'template> Template<'template> {
                             match iter.next() {
                                 Some(new_val) => {
                                     *val = new_val;
+                                    // On the first iteration, this will be usize::MAX so it will
+                                    // wrap around to zero.
                                     *index = index.wrapping_add(1);
                                     program_counter += 1;
                                 }

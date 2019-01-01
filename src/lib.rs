@@ -1,3 +1,67 @@
+//! ## TinyTemplate
+//!
+//! TinyTemplate is a minimal templating library originally designed for use in [Criterion.rs].
+//! It deliberately does not provide all of the features of a full-power template engine, but in
+//! return it provides a simple API, clear templating syntax, decent performance and very few
+//! dependencies.
+//!
+//! ## Features
+//!
+//! The most important features are as follows (see the [syntax] module for full details
+//! on the template syntax):
+//!
+//! * Rendering values - `{ myvalue }`
+//! * Conditionals - `{{ if foo }}Foo is true{{ else }}Foo is false{{ endif }}`
+//! * Loops - `{{ for value in row }}{value}{{ endfor }}`
+//! * Customizable value formatters `{{ value | my_formatter }}`
+//! * Macros `{{ call my_template with foo }}`
+//!
+//! ## Restrictions
+//!
+//! TinyTemplate was designed with the assumption that the templates are available as static strings,
+//! either using string literals or the `include_str!` macro. Thus, it borrows `&str` slices from the
+//! template text itself and uses them during the rendering process. Although it is possible to use
+//! TinyTemplate with template strings loaded at runtime, this is not recommended.
+//!
+//! Additionally, TinyTemplate can only render templates into Strings. If you need to render a
+//! template directly to a socket or file, TinyTemplate may not be right for you.
+//!
+//! ## Example
+//!
+//! ```
+//! #[macro_use]
+//! extern crate serde_derive;
+//! extern crate tinytemplate;
+//!
+//! use tinytemplate::TinyTemplate;
+//! use std::error::Error;
+//!
+//! #[derive(Serialize)]
+//! struct Context {
+//!     name: String,
+//! }
+//!
+//! static TEMPLATE : &'static str = "Hello {name}!";
+//!
+//! pub fn main() -> Result<(), Box<dyn Error>> {
+//!     let mut tt = TinyTemplate::new();
+//!     tt.add_template("hello", TEMPLATE)?;
+//!
+//!     let context = Context {
+//!         name: "World".to_string(),
+//!     };
+//!
+//!     let rendered = tt.render("hello", &context)?;
+//! #   assert_eq!("Hello World!", &rendered);
+//!     println!("{}", rendered);
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//! [Criterion.rs]: https://github.com/bheisler/criterion.rs
+//!
+
 extern crate serde;
 extern crate serde_json;
 
@@ -8,6 +72,7 @@ extern crate serde_derive;
 mod compiler;
 pub mod error;
 mod instruction;
+pub mod syntax;
 mod template;
 
 use error::*;
@@ -23,9 +88,23 @@ TODO:
 - HTML escaping?
 - Write documentation
 - CI builds
+- Should give parser error on unclosed if/for/with block.
+- Whitespace trimming is incorrect if there's another tag immediately afterwards.
 */
+
+/// Type alias for closures which can be used as value formatters.
 pub type Formatter = Fn(&Value, &mut String) -> Result<()>;
 
+/// The format function is used as the default value formatter for all values unless the user
+/// specifies another. It is provided publicly so that it can be called as part of custom formatters.
+/// Values are formatted as follows:
+///
+/// * `Value::Null` => the empty string
+/// * `Value::Bool` => true|false
+/// * `Value::Number` => the number, as formatted by `serde_json`.
+/// * `Value::String` => the string
+///
+/// Arrays and objects are not formatted, and attempting to do so will result in a rendering error.
 pub fn format(value: &Value, output: &mut String) -> Result<()> {
     match value {
         Value::Null => Ok(()),
@@ -45,11 +124,15 @@ pub fn format(value: &Value, output: &mut String) -> Result<()> {
     }
 }
 
+/// The TinyTemplate struct is the entry point for the TinyTemplate library. It contains the
+/// template and formatter registries and provides functions to render templates as well as to
+/// register templates and formatters.
 pub struct TinyTemplate<'template> {
     templates: HashMap<&'template str, Template<'template>>,
     formatters: HashMap<&'template str, Box<Formatter>>,
 }
 impl<'template> TinyTemplate<'template> {
+    /// Create an empty TinyTemplate registry.
     pub fn new() -> TinyTemplate<'template> {
         TinyTemplate {
             templates: HashMap::default(),
@@ -57,12 +140,14 @@ impl<'template> TinyTemplate<'template> {
         }
     }
 
+    /// Parse and compile the given template, then register it under the given name.
     pub fn add_template(&mut self, name: &'template str, text: &'template str) -> Result<()> {
         let template = Template::compile(text)?;
         self.templates.insert(name, template);
         Ok(())
     }
 
+    /// Register the given formatter function under the given name.
     pub fn add_formatter<F>(&mut self, name: &'template str, formatter: F)
     where
         F: 'static + Fn(&Value, &mut String) -> Result<()>,
@@ -70,6 +155,8 @@ impl<'template> TinyTemplate<'template> {
         self.formatters.insert(name, Box::new(formatter));
     }
 
+    /// Render the template with the given name using the given context object. The context
+    /// object must implement `serde::Serialize` as it will be converted to `serde_json::Value`.
     pub fn render<C>(&self, template: &str, context: &C) -> Result<String>
     where
         C: Serialize,
@@ -77,7 +164,7 @@ impl<'template> TinyTemplate<'template> {
         let value = serde_json::to_value(context)?;
         match self.templates.get(template) {
             Some(tmpl) => tmpl.render(&value, &self.templates, &self.formatters),
-            None => Err(Error::UnknownTemplate {
+            None => Err(Error::RenderError {
                 msg: format!("Unknown template '{}'", template),
             }),
         }

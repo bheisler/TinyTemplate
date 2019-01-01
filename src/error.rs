@@ -1,26 +1,43 @@
 use instruction::{path_to_str, PathSlice};
 use serde_json::Error as SerdeJsonError;
 use serde_json::Value;
-use std::fmt::Error as FormatError;
+use std::fmt;
 
+/// Enum representing the potential errors that TinyTemplate can encounter.
 #[derive(Debug)]
 pub enum Error {
     ParseError { msg: String },
     RenderError { msg: String },
     SerdeError { err: SerdeJsonError },
-    FormatError { err: FormatError },
-    UnknownTemplate { msg: String },
+    FormatError { err: fmt::Error },
 }
 impl From<SerdeJsonError> for Error {
     fn from(err: SerdeJsonError) -> Error {
         Error::SerdeError { err }
     }
 }
-impl From<FormatError> for Error {
-    fn from(err: FormatError) -> Error {
+impl From<fmt::Error> for Error {
+    fn from(err: fmt::Error) -> Error {
         Error::FormatError { err }
     }
 }
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Error::ParseError { msg } => write!(f, "Failed to parse the template. Reason: {}", msg),
+            Error::RenderError { msg } => {
+                write!(f, "Failed to render the template. Reason: {}", msg)
+            }
+            Error::SerdeError{ err } => {
+                write!(f, "Unexpected serde error while converting the context to a serde_json::Value. Error: {}", err)
+            }
+            Error::FormatError{ err } => {
+                write!(f, "Unexpected formatting error: {}", err )
+            }
+        }
+    }
+}
+impl std::error::Error for Error {}
 
 pub type Result<T> = std::result::Result<T, Error>;
 
