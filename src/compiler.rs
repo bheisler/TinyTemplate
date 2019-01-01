@@ -56,6 +56,14 @@ impl<'template> TemplateCompiler<'template> {
                         let num_instructions = self.instructions.len();
                         self.with_unclosed_branch(|b| b.target = num_instructions)?;
                     }
+                    "with" => {
+                        let path = parse_path(rest);
+                        self.instructions.push(Instruction::PushContext(path))
+                    }
+                    "endwith" => {
+                        self.expect_empty(rest)?;
+                        self.instructions.push(Instruction::PopContext)
+                    }
                     _ => {
                         return Err(ParseError {
                             msg: format!("Unknown block type '{}'", discriminant),
@@ -222,6 +230,16 @@ mod test {
         assert_eq!(&Literal("Hello!"), &instructions[1]);
         assert_eq!(&branch(vec!["foo"], false, 4), &instructions[2]);
         assert_eq!(&Literal("Goodbye!"), &instructions[3]);
+    }
+
+    #[test]
+    fn test_with() {
+        let text = "{% with foo %}Hello!{% endwith %}";
+        let instructions = compile(text).unwrap();
+        assert_eq!(3, instructions.len());
+        assert_eq!(&PushContext(vec!["foo"]), &instructions[0]);
+        assert_eq!(&Literal("Hello!"), &instructions[1]);
+        assert_eq!(&PopContext, &instructions[2]);
     }
 
     #[test]

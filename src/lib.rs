@@ -19,10 +19,10 @@ use template::Template;
 /*
 TODO:
 - Implement parsing using Jinja2-like syntax
-    - With {% with foo.bar %}{% endwith %}
+    - With/as {% with foo.bar as bar %}{{bar}}{% endwith %}
     - For {% for foo in bar.baz %}{% endfor %}
-    - Comments {# Foo bar baz #}
     - Whitespace stripping {{- foo.bar -}}
+    - Comments {# Foo bar baz #}
     - Call {% call macro_name %}
     - Indexing {{ foo.bar[5] }} {{ foo.bar[index] }}
     - Formatters {{ foo.bar | my_formatter }}

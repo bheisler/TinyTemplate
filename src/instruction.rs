@@ -12,4 +12,6 @@ pub(crate) enum Instruction<'template> {
     Literal(&'template str),
     Value(Path<'template>),
     Branch(Branch<'template>),
+    PushContext(Path<'template>),
+    PopContext,
 }
