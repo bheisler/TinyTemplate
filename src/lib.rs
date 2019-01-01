@@ -1,12 +1,11 @@
 mod compiler;
+mod error;
 mod instruction;
 mod template;
-mod error;
 
-/* 
+/*
 TODO:
 - Implement parsing using Jinja2-like syntax
-    - If/else {% if foo %}{% else %}{% endif %}
     - For {% for foo in bar.baz %}{% endfor %}
     - Comments {# Foo bar baz #}
     - Whitespace stripping {{- foo.bar -}}

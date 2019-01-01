@@ -1,6 +1,6 @@
 use error::Error::*;
 use error::Result;
-use instruction::{Instruction, Path};
+use instruction::{Branch, Instruction, Path};
 
 const UNKNOWN: usize = std::usize::MAX;
 
@@ -32,15 +32,29 @@ impl<'template> TemplateCompiler<'template> {
                 match discriminant {
                     "if" => {
                         let path = parse_path(rest);
-                        self.instructions.push(Instruction::Branch {
+                        self.instructions.push(Instruction::Branch(Branch {
                             path,
                             invert: true,
-                            taken: UNKNOWN,
-                        })
+                            target: UNKNOWN,
+                        }))
+                    }
+                    "else" => {
+                        self.expect_empty(rest)?;
+                        let num_instructions = self.instructions.len() + 1;
+                        let path_clone: Path<'template> = self.with_unclosed_branch(|b| {
+                            b.target = num_instructions;
+                            b.path.clone()
+                        })?;
+                        self.instructions.push(Instruction::Branch(Branch {
+                            path: path_clone,
+                            invert: false,
+                            target: UNKNOWN,
+                        }))
                     }
                     "endif" => {
                         self.expect_empty(rest)?;
-                        self.close_branch()?;
+                        let num_instructions = self.instructions.len();
+                        self.with_unclosed_branch(|b| b.target = num_instructions)?;
                     }
                     _ => {
                         return Err(ParseError {
@@ -70,16 +84,16 @@ impl<'template> TemplateCompiler<'template> {
         }
     }
 
-    fn close_branch(&mut self) -> Result<()> {
-        let num_instructions = self.instructions.len();
+    fn with_unclosed_branch<F, T>(&mut self, f: F) -> Result<T>
+    where
+        F: FnOnce(&mut Branch<'template>) -> T,
+    {
         let instr = self.instructions.iter_mut().rfind(|instr| match instr {
-            Instruction::Branch { taken, .. } if *taken == UNKNOWN => true,
+            Instruction::Branch(branch) if branch.target == UNKNOWN => true,
             _ => false,
         });
-
-        if let Some(Instruction::Branch { taken, .. }) = instr {
-            *taken = num_instructions;
-            Ok(())
+        if let Some(Instruction::Branch(branch)) = instr {
+            Ok(f(branch))
         } else {
             Err(ParseError {
                 msg: "Found a closing endif or else which doesn't match with a preceding if."
@@ -148,6 +162,14 @@ mod test {
         TemplateCompiler::new(text).compile()
     }
 
+    fn branch(path: Path<'static>, invert: bool, target: usize) -> Instruction<'static> {
+        Instruction::Branch(::instruction::Branch {
+            path,
+            invert,
+            target,
+        })
+    }
+
     #[test]
     fn test_compile_literal() {
         let text = "Test String";
@@ -187,15 +209,19 @@ mod test {
         let text = "{% if foo %}Hello!{% endif %}";
         let instructions = compile(text).unwrap();
         assert_eq!(2, instructions.len());
-        assert_eq!(
-            &Branch {
-                path: vec!["foo"],
-                invert: true,
-                taken: 2
-            },
-            &instructions[0]
-        );
+        assert_eq!(&branch(vec!["foo"], true, 2), &instructions[0]);
         assert_eq!(&Literal("Hello!"), &instructions[1]);
+    }
+
+    #[test]
+    fn test_if_else_endif() {
+        let text = "{% if foo %}Hello!{% else %}Goodbye!{% endif %}";
+        let instructions = compile(text).unwrap();
+        assert_eq!(4, instructions.len());
+        assert_eq!(&branch(vec!["foo"], true, 3), &instructions[0]);
+        assert_eq!(&Literal("Hello!"), &instructions[1]);
+        assert_eq!(&branch(vec!["foo"], false, 4), &instructions[2]);
+        assert_eq!(&Literal("Goodbye!"), &instructions[3]);
     }
 
     #[test]
