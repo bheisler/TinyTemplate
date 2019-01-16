@@ -31,6 +31,11 @@ TinyTemplate is a small, minimalistic text templating system with limited depend
  - __Simple__: TinyTemplate presents a minimal but well-documented user-facing API.
  - __Lightweight__: TinyTemplate has minimal required dependencies.
 
+Non-goals include:
+
+- __Extensibility__: TinyTemplate supports custom value formatters, but that is all.
+- __Performance__: TinyTemplate provides decent performance, but other template engines are faster.
+
 ### Why TinyTemplate?
 
 I created TinyTemplate after noticing that none of the existing template libraries really suited my
@@ -41,9 +46,53 @@ wanted plain text with some markup. Some expect the templates to be provided in 
 files, but I wanted the template to be included in the binary. I just wanted something small and 
 minimal with good documentation but there was nothing like that out there so I wrote my own.
 
+TinyTemplate is well-suited to generating HTML reports and similar text files. It could be used for
+generating HTML or other text in a web-server, but for more-complex use cases another template
+engine may be a better fit.
+
 ### Quickstart
 
-TODO: Write this
+First, add TinyTemplate and serde-derive to your `Cargo.toml` file:
+
+```toml
+[dependencies]
+tinytemplate = "1.0"
+serde_derive = "1.0"
+```
+
+Then add this code to "src.rs":
+
+```rust
+#[macro_use]
+extern crate serde_derive;
+extern crate tinytemplate;
+
+use tinytemplate::TinyTemplate;
+use std::error::Error;
+
+#[derive(Serialize)]
+struct Context {
+    name: String,
+}
+
+static TEMPLATE : &'static str = "Hello {name}!";
+
+pub fn main() -> Result<(), Box<dyn Error>> {
+    let mut tt = TinyTemplate::new();
+    tt.add_template("hello", TEMPLATE)?;
+
+    let context = Context {
+        name: "World".to_string(),
+    };
+
+    let rendered = tt.render("hello", &context)?;
+    println!("{}", rendered);
+
+    Ok(())
+}
+```
+
+This should print "Hello World!" to stdout.
 
 ### Contributing
 
@@ -60,7 +109,7 @@ For more details, see the [CONTRIBUTING.md file](https://github.com/bheisler/Tin
 
 ### Maintenance
 
-TinyTemplate is currently maintained by Brook Heisler (@bheisler).
+TinyTemplate was created and is currently maintained by Brook Heisler (@bheisler).
 
 ### License
 

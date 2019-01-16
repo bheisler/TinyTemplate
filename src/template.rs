@@ -193,9 +193,7 @@ impl<'template> Template<'template> {
                             },
                             Value::String(s) => !s.is_empty(),
                             Value::Array(arr) => !arr.is_empty(),
-                            Value::Object(_) => {
-                                return Err(truthiness_error(path));
-                            }
+                            Value::Object(_) => false,
                         }
                     };
 

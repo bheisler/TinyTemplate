@@ -7,8 +7,8 @@
 //!
 //! ## Features
 //!
-//! The most important features are as follows (see the [syntax] module for full details
-//! on the template syntax):
+//! The most important features are as follows (see the [syntax](syntax/index.html) module for full
+//! details on the template syntax):
 //!
 //! * Rendering values - `{ myvalue }`
 //! * Conditionals - `{{ if foo }}Foo is true{{ else }}Foo is false{{ endif }}`
@@ -84,12 +84,15 @@ use template::Template;
 
 /*
 TODO:
+- Support "if not"
 - Implement error detail handling by calculating the line/column when an error occurs
 - HTML escaping?
-- Write documentation
 - CI builds
 - Should give parser error on unclosed if/for/with block.
 - Whitespace trimming is incorrect if there's another tag immediately afterwards.
+- Formatters shouldn't have access to the raw String, but instead a trait object type.
+  They shouldn't be able to do arbitrary changes to the string, and this will make it easier
+  to format directly to a file.
 */
 
 /// Type alias for closures which can be used as value formatters.

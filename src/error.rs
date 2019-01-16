@@ -1,3 +1,5 @@
+//! Module containing the error type returned by TinyTemplate if an error occurs.
+
 use instruction::{path_to_str, PathSlice};
 use serde_json::Error as SerdeJsonError;
 use serde_json::Value;
