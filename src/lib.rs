@@ -85,17 +85,42 @@ use template::Template;
 /*
 TODO:
 - Implement error detail handling by calculating the line/column when an error occurs
-- HTML escaping?
 - CI builds
 - Should give parser error on unclosed if/for/with block.
 - Whitespace trimming is incorrect if there's another tag immediately afterwards.
-- Formatters shouldn't have access to the raw String, but instead a trait object type.
-  They shouldn't be able to do arbitrary changes to the string, and this will make it easier
-  to format directly to a file.
 */
 
 /// Type alias for closures which can be used as value formatters.
-pub type Formatter = Fn(&Value, &mut String) -> Result<()>;
+pub type ValueFormatter = Fn(&Value, &mut String) -> Result<()>;
+
+/// Appends `value` to `output`, performing HTML-escaping in the process.
+pub fn escape(value: &str, output: &mut String) {
+    // Algorithm taken from the rustdoc source code.
+    let value_str = value;
+    let mut last_emitted = 0;
+    for (i, ch) in value.bytes().enumerate() {
+        match ch as char {
+            '<' | '>' | '&' | '\'' | '"' => {
+                output.push_str(&value_str[last_emitted..i]);
+                let s = match ch as char {
+                    '>' => "&gt;",
+                    '<' => "&lt;",
+                    '&' => "&amp;",
+                    '\'' => "&#39;",
+                    '"' => "&quot;",
+                    _ => unreachable!(),
+                };
+                output.push_str(s);
+                last_emitted = i + 1;
+            }
+            _ => {}
+        }
+    }
+
+    if last_emitted < value_str.len() {
+        output.push_str(&value_str[last_emitted..]);
+    }
+}
 
 /// The format function is used as the default value formatter for all values unless the user
 /// specifies another. It is provided publicly so that it can be called as part of custom formatters.
@@ -104,10 +129,30 @@ pub type Formatter = Fn(&Value, &mut String) -> Result<()>;
 /// * `Value::Null` => the empty string
 /// * `Value::Bool` => true|false
 /// * `Value::Number` => the number, as formatted by `serde_json`.
-/// * `Value::String` => the string
+/// * `Value::String` => the string, HTML-escaped
 ///
 /// Arrays and objects are not formatted, and attempting to do so will result in a rendering error.
 pub fn format(value: &Value, output: &mut String) -> Result<()> {
+    match value {
+        Value::Null => Ok(()),
+        Value::Bool(b) => {
+            write!(output, "{}", b)?;
+            Ok(())
+        }
+        Value::Number(n) => {
+            write!(output, "{}", n)?;
+            Ok(())
+        }
+        Value::String(s) => {
+            escape(s, output);
+            Ok(())
+        }
+        _ => Err(unprintable_error()),
+    }
+}
+
+/// Identical to [`format`](fn.format.html) except that this does not perform HTML escaping.
+pub fn format_unescaped(value: &Value, output: &mut String) -> Result<()> {
     match value {
         Value::Null => Ok(()),
         Value::Bool(b) => {
@@ -131,15 +176,18 @@ pub fn format(value: &Value, output: &mut String) -> Result<()> {
 /// register templates and formatters.
 pub struct TinyTemplate<'template> {
     templates: HashMap<&'template str, Template<'template>>,
-    formatters: HashMap<&'template str, Box<Formatter>>,
+    formatters: HashMap<&'template str, Box<ValueFormatter>>,
 }
 impl<'template> TinyTemplate<'template> {
-    /// Create an empty TinyTemplate registry.
+    /// Create a new TinyTemplate registry. The returned registry contains no templates, and has
+    /// [`format_unescaped`](fn.format_unescaped.html) registered as a formatter named "unescaped".
     pub fn new() -> TinyTemplate<'template> {
-        TinyTemplate {
+        let mut tt = TinyTemplate {
             templates: HashMap::default(),
             formatters: HashMap::default(),
-        }
+        };
+        tt.add_formatter("unescaped", format_unescaped);
+        tt
     }
 
     /// Parse and compile the given template, then register it under the given name.

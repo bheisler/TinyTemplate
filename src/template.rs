@@ -9,7 +9,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::slice;
-use Formatter;
+use ValueFormatter;
 
 /// Enum defining the different kinds of records on the context stack.
 enum ContextElement<'render, 'template> {
@@ -106,7 +106,7 @@ impl<'template> Template<'template> {
         &self,
         context: &Value,
         template_registry: &HashMap<&str, Template>,
-        formatter_registry: &HashMap<&str, Box<Formatter>>,
+        formatter_registry: &HashMap<&str, Box<ValueFormatter>>,
     ) -> Result<String> {
         // The length of the original template seems like a reasonable guess at the length of the
         // output.
@@ -120,7 +120,7 @@ impl<'template> Template<'template> {
         &self,
         context: &Value,
         template_registry: &HashMap<&str, Template>,
-        formatter_registry: &HashMap<&str, Box<Formatter>>,
+        formatter_registry: &HashMap<&str, Box<ValueFormatter>>,
         output: &mut String,
     ) -> Result<()> {
         let mut program_counter = 0;
@@ -308,6 +308,7 @@ mod test {
         null: Option<usize>,
         array: Vec<usize>,
         nested: NestedContext,
+        escapes: &'static str,
     }
 
     fn context() -> Value {
@@ -318,6 +319,7 @@ mod test {
             null: None,
             array: vec![1, 2, 3],
             nested: NestedContext { value: 10 },
+            escapes: "1:< 2:> 3:& 4:' 5:\"",
         };
         serde_json::to_value(&ctx).unwrap()
     }
@@ -335,8 +337,8 @@ mod test {
         Ok(())
     }
 
-    fn formatters() -> HashMap<&'static str, Box<Formatter>> {
-        let mut map = HashMap::<&'static str, Box<Formatter>>::new();
+    fn formatters() -> HashMap<&'static str, Box<ValueFormatter>> {
+        let mut map = HashMap::<&'static str, Box<ValueFormatter>>::new();
         map.insert("my_formatter", Box::new(format));
         map
     }
@@ -593,5 +595,30 @@ mod test {
         template
             .render(&context, &template_registry, &formatter_registry)
             .unwrap_err();
+    }
+
+    #[test]
+    fn test_escaping() {
+        let template = compile("{ escapes }");
+        let context = context();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
+        assert_eq!("1:&lt; 2:&gt; 3:&amp; 4:&#39; 5:&quot;", &string);
+    }
+
+    #[test]
+    fn test_unescaped() {
+        let template = compile("{ escapes | unescaped }");
+        let context = context();
+        let template_registry = other_templates();
+        let mut formatter_registry = formatters();
+        formatter_registry.insert("unescaped", Box::new(::format_unescaped));
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
+        assert_eq!("1:< 2:> 3:& 4:' 5:\"", &string);
     }
 }
