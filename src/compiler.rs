@@ -77,10 +77,15 @@ impl<'template> TemplateCompiler<'template> {
                 let (discriminant, rest) = self.consume_block()?;
                 match discriminant {
                     "if" => {
-                        let path = parse_path(rest)?;
+                        let (path, negated) = if rest.starts_with("not") {
+                            (parse_path(&rest[4..])?, true)
+                        } else {
+                            (parse_path(rest)?, false)
+                        };
                         self.block_stack
                             .push(Block::Branch(self.instructions.len()));
-                        self.instructions.push(Instruction::Branch(path, UNKNOWN));
+                        self.instructions
+                            .push(Instruction::Branch(path, !negated, UNKNOWN));
                     }
                     "else" => {
                         self.expect_empty(rest)?;
@@ -180,7 +185,7 @@ impl<'template> TemplateCompiler<'template> {
         let branch_block = self.block_stack.pop();
         if let Some(Block::Branch(index)) = branch_block {
             match &mut self.instructions[index] {
-                Instruction::Branch(_, target) => {
+                Instruction::Branch(_, _, target) => {
                     *target = new_target;
                     Ok(())
                 }
@@ -414,7 +419,16 @@ mod test {
         let text = "{{ if foo }}Hello!{{ endif }}";
         let instructions = compile(text).unwrap();
         assert_eq!(2, instructions.len());
-        assert_eq!(&Branch(vec!["foo"], 2), &instructions[0]);
+        assert_eq!(&Branch(vec!["foo"], true, 2), &instructions[0]);
+        assert_eq!(&Literal("Hello!"), &instructions[1]);
+    }
+
+    #[test]
+    fn test_if_not_endif() {
+        let text = "{{ if not foo }}Hello!{{ endif }}";
+        let instructions = compile(text).unwrap();
+        assert_eq!(2, instructions.len());
+        assert_eq!(&Branch(vec!["foo"], false, 2), &instructions[0]);
         assert_eq!(&Literal("Hello!"), &instructions[1]);
     }
 
@@ -423,7 +437,7 @@ mod test {
         let text = "{{ if foo }}Hello!{{ else }}Goodbye!{{ endif }}";
         let instructions = compile(text).unwrap();
         assert_eq!(4, instructions.len());
-        assert_eq!(&Branch(vec!["foo"], 3), &instructions[0]);
+        assert_eq!(&Branch(vec!["foo"], true, 3), &instructions[0]);
         assert_eq!(&Literal("Hello!"), &instructions[1]);
         assert_eq!(&Goto(4), &instructions[2]);
         assert_eq!(&Literal("Goodbye!"), &instructions[3]);
@@ -480,7 +494,7 @@ mod test {
         let instructions = compile(text).unwrap();
         assert_eq!(6, instructions.len());
         assert_eq!(&Literal("Hello,"), &instructions[0]);
-        assert_eq!(&Branch(vec!["name"], 5), &instructions[1]);
+        assert_eq!(&Branch(vec!["name"], true, 5), &instructions[1]);
         assert_eq!(&Literal(""), &instructions[2]);
         assert_eq!(&Value(vec!["name"]), &instructions[3]);
         assert_eq!(&Literal(""), &instructions[4]);

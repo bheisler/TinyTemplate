@@ -160,7 +160,7 @@ impl<'template> Template<'template> {
                     program_counter += 1;
                 }
                 Instruction::FormattedValue(path, name) => {
-                    // The @ keywords aren't suppored for formatted values. Should they be?
+                    // The @ keywords aren't supported for formatted values. Should they be?
                     let value_to_render = render_context.lookup(path)?;
                     match formatter_registry.get(name) {
                         Some(formatter) => formatter(value_to_render, output)?,
@@ -168,36 +168,39 @@ impl<'template> Template<'template> {
                     }
                     program_counter += 1;
                 }
-                Instruction::Branch(path, target) => {
+                Instruction::Branch(path, negate, target) => {
                     let first = *path.first().unwrap();
-                    let mut falsy = if first.starts_with('@') {
+                    let mut truthy = if first.starts_with('@') {
                         match first {
-                            "@index" => render_context.lookup_index()?.0 == 0,
-                            "@first" => render_context.lookup_index()?.0 != 0,
+                            "@index" => render_context.lookup_index()?.0 != 0,
+                            "@first" => render_context.lookup_index()?.0 == 0,
                             "@last" => {
                                 let (index, length) = render_context.lookup_index()?;
-                                index != length
+                                index == length
                             }
                             _ => panic!(), // This should have been caught by the parser.
                         }
                     } else {
                         let value_to_render = render_context.lookup(path)?;
                         match value_to_render {
-                            Value::Null => true,
-                            Value::Bool(b) => !*b,
+                            Value::Null => false,
+                            Value::Bool(b) => *b,
                             Value::Number(n) => match n.as_f64() {
-                                Some(float) => float != 0.0,
+                                Some(float) => float == 0.0,
                                 None => {
                                     return Err(truthiness_error(path));
                                 }
                             },
                             Value::String(s) => !s.is_empty(),
                             Value::Array(arr) => !arr.is_empty(),
-                            Value::Object(_) => false,
+                            Value::Object(_) => true,
                         }
                     };
+                    if *negate {
+                        truthy = !truthy;
+                    }
 
-                    if falsy {
+                    if truthy {
                         program_counter = *target;
                     } else {
                         program_counter += 1;
@@ -387,7 +390,7 @@ mod test {
     }
 
     #[test]
-    fn test_if_not_taken() {
+    fn test_if_untaken() {
         let template = compile("{{ if null }}Hello!{{ endif }}");
         let context = context();
         let template_registry = other_templates();
@@ -411,7 +414,7 @@ mod test {
     }
 
     #[test]
-    fn test_if_else_not_taken() {
+    fn test_if_else_untaken() {
         let template = compile("{{ if null }}Hello!{{ else }}Goodbye!{{ endif }}");
         let context = context();
         let template_registry = other_templates();
@@ -420,6 +423,54 @@ mod test {
             .render(&context, &template_registry, &formatter_registry)
             .unwrap();
         assert_eq!("Goodbye!", &string);
+    }
+
+    #[test]
+    fn test_ifnot_taken() {
+        let template = compile("{{ if not boolean }}Hello!{{ endif }}");
+        let context = context();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
+        assert_eq!("", &string);
+    }
+
+    #[test]
+    fn test_ifnot_untaken() {
+        let template = compile("{{ if not null }}Hello!{{ endif }}");
+        let context = context();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
+        assert_eq!("Hello!", &string);
+    }
+
+    #[test]
+    fn test_ifnot_else_taken() {
+        let template = compile("{{ if not boolean }}Hello!{{ else }}Goodbye!{{ endif }}");
+        let context = context();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
+        assert_eq!("Goodbye!", &string);
+    }
+
+    #[test]
+    fn test_ifnot_else_untaken() {
+        let template = compile("{{ if not null }}Hello!{{ else }}Goodbye!{{ endif }}");
+        let context = context();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
+        assert_eq!("Hello!", &string);
     }
 
     #[test]

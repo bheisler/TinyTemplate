@@ -84,7 +84,6 @@ use template::Template;
 
 /*
 TODO:
-- Support "if not"
 - Implement error detail handling by calculating the line/column when an error occurs
 - HTML escaping?
 - CI builds

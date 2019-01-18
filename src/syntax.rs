@@ -50,6 +50,16 @@
 //! {{ endif }}
 //! ```
 //!
+//! The condition can be negated by using "{{ if not path }}":
+//!
+//! ```text
+//! {{ if not user.is_birthday }}
+//! Have a nice day!
+//! {{ else }}
+//! Happy Birthday!
+//! {{ endif }}
+//! ```
+//!
 //! ### Loops
 //!
 //! TinyTemplate supports iterating over the values of arrays. Only arrays are supported. Loops

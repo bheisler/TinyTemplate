@@ -27,8 +27,8 @@ pub(crate) enum Instruction<'template> {
     FormattedValue(Path<'template>, &'template str),
 
     /// Look up the value at the given path and jump to the given instruction index if that value
-    /// is falsy.
-    Branch(Path<'template>, usize),
+    /// is truthy (if the boolean is true) or falsy (if the boolean is false)
+    Branch(Path<'template>, bool, usize),
 
     /// Push a new object context on the stack, shadowing everything that is on it currently.
     PushContext(Path<'template>),
