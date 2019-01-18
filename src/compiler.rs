@@ -63,6 +63,8 @@ impl<'template> TemplateCompiler<'template> {
         while !self.remaining_text.is_empty() {
             // Comment, denoted by {# comment text #}
             if self.remaining_text.starts_with("{#") {
+                self.trim_next = false;
+
                 let tag = self.consume_tag("#}")?;
                 let comment = tag[2..(tag.len() - 2)].trim();
                 if comment.starts_with('-') {
@@ -74,6 +76,8 @@ impl<'template> TemplateCompiler<'template> {
             // Block tag. Block tags are wrapped in {{ }} and always have one word at the start
             // to identify which kind of tag it is. Depending on the tag type there may be more.
             } else if self.remaining_text.starts_with("{{") {
+                self.trim_next = false;
+
                 let (discriminant, rest) = self.consume_block()?;
                 match discriminant {
                     "if" => {
@@ -147,6 +151,8 @@ impl<'template> TemplateCompiler<'template> {
             // Note that it is not (currently) possible to escape curly braces in the templates to
             // prevent them from being interpreted as values.
             } else if self.remaining_text.starts_with('{') {
+                self.trim_next = false;
+
                 let (path, name) = self.consume_value()?;
                 let instruction = match name {
                     Some(name) => Instruction::FormattedValue(path, name),
@@ -517,6 +523,16 @@ mod test {
         assert_eq!(2, instructions.len());
         assert_eq!(&Literal("Hello,"), &instructions[0]);
         assert_eq!(&Literal("there!"), &instructions[1]);
+    }
+
+    #[test]
+    fn test_strip_whitespace_followed_by_another_tag() {
+        let text = "{value -}{value} Hello";
+        let instructions = compile(text).unwrap();
+        assert_eq!(3, instructions.len());
+        assert_eq!(&Value(vec!["value"]), &instructions[0]);
+        assert_eq!(&Value(vec!["value"]), &instructions[1]);
+        assert_eq!(&Literal(" Hello"), &instructions[2]);
     }
 
     #[test]

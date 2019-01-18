@@ -88,6 +88,8 @@ TODO:
 - CI builds
 - Should give parser error on unclosed if/for/with block.
 - Whitespace trimming is incorrect if there's another tag immediately afterwards.
+- License files
+- Fill in the Cargo.toml file
 */
 
 /// Type alias for closures which can be used as value formatters.
