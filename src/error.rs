@@ -8,10 +8,20 @@ use std::fmt;
 /// Enum representing the potential errors that TinyTemplate can encounter.
 #[derive(Debug)]
 pub enum Error {
-    ParseError { msg: String },
-    RenderError { msg: String },
-    SerdeError { err: SerdeJsonError },
-    FormatError { err: fmt::Error },
+    ParseError {
+        msg: String,
+        line: usize,
+        column: usize,
+    },
+    RenderError {
+        msg: String,
+    },
+    SerdeError {
+        err: SerdeJsonError,
+    },
+    FormatError {
+        err: fmt::Error,
+    },
 }
 impl From<SerdeJsonError> for Error {
     fn from(err: SerdeJsonError) -> Error {
@@ -26,7 +36,7 @@ impl From<fmt::Error> for Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Error::ParseError { msg } => write!(f, "Failed to parse the template. Reason: {}", msg),
+            Error::ParseError { msg, line, column } => write!(f, "Failed to parse the template (line {}, column {}). Reason: {}", line, column, msg),
             Error::RenderError { msg } => {
                 write!(f, "Failed to render the template. Reason: {}", msg)
             }

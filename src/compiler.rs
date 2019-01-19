@@ -2,7 +2,7 @@
 /// a simple bytecode interpreter (see the [instruction] module for more details) to render templates.
 /// The [`TemplateCompiler`](struct.TemplateCompiler.html) struct is responsible for parsing the
 /// template strings and generating the appropriate bytecode instructions.
-use error::Error::*;
+use error::Error::{self, *};
 use error::Result;
 use instruction::{Instruction, Path};
 
@@ -21,24 +21,11 @@ enum Block {
 /// List of the known @-keywords so that we can error if the user spells them wrong.
 static KNOWN_KEYWORDS: [&'static str; 3] = ["@index", "@first", "@last"];
 
-/// Splits a string into a list of named segments which can later be used to look up values in the
-/// context.
-fn parse_path(text: &str) -> Result<Path> {
-    if !text.starts_with('@') {
-        Ok(text.split('.').collect::<Vec<_>>())
-    } else if KNOWN_KEYWORDS.iter().any(|k| *k == text) {
-        Ok(vec![text])
-    } else {
-        Err(ParseError {
-            msg: format!("Invalid keyword name '{}'", text),
-        })
-    }
-}
-
 /// The TemplateCompiler struct is responsible for parsing a template string and generating bytecode
 /// instructions based on it. The parser is a simple hand-written pattern-matching parser with no
 /// recursion, which makes it relatively easy to read.
 pub(crate) struct TemplateCompiler<'template> {
+    original_text: &'template str,
     remaining_text: &'template str,
     instructions: Vec<Instruction<'template>>,
     block_stack: Vec<Block>,
@@ -51,6 +38,7 @@ impl<'template> TemplateCompiler<'template> {
     /// Create a new template compiler to parse and compile the given template.
     pub fn new(text: &'template str) -> TemplateCompiler<'template> {
         TemplateCompiler {
+            original_text: text,
             remaining_text: text,
             instructions: vec![],
             block_stack: vec![],
@@ -82,9 +70,9 @@ impl<'template> TemplateCompiler<'template> {
                 match discriminant {
                     "if" => {
                         let (path, negated) = if rest.starts_with("not") {
-                            (parse_path(&rest[4..])?, true)
+                            (self.parse_path(&rest[4..])?, true)
                         } else {
-                            (parse_path(rest)?, false)
+                            (self.parse_path(rest)?, false)
                         };
                         self.block_stack
                             .push(Block::Branch(self.instructions.len()));
@@ -94,7 +82,7 @@ impl<'template> TemplateCompiler<'template> {
                     "else" => {
                         self.expect_empty(rest)?;
                         let num_instructions = self.instructions.len() + 1;
-                        self.close_branch(num_instructions)?;
+                        self.close_branch(num_instructions, discriminant)?;
                         self.block_stack
                             .push(Block::Branch(self.instructions.len()));
                         self.instructions.push(Instruction::Goto(UNKNOWN))
@@ -102,7 +90,7 @@ impl<'template> TemplateCompiler<'template> {
                     "endif" => {
                         self.expect_empty(rest)?;
                         let num_instructions = self.instructions.len();
-                        self.close_branch(num_instructions)?;
+                        self.close_branch(num_instructions, discriminant)?;
                     }
                     "with" => {
                         let (path, name) = self.parse_with(rest)?;
@@ -118,9 +106,10 @@ impl<'template> TemplateCompiler<'template> {
                         if let Some(Block::With) = self.block_stack.pop() {
                             self.instructions.push(Instruction::PopContext)
                         } else {
-                            return Err(ParseError {
-                                msg: "Found a closing endwith that doesn't match with a preceeding with.".to_string()
-                            });
+                            return Err(self.parse_error(
+                                discriminant,
+                                "Found a closing endwith that doesn't match with a preceeding with.".to_string()
+                            ));
                         }
                     }
                     "for" => {
@@ -133,7 +122,7 @@ impl<'template> TemplateCompiler<'template> {
                     "endfor" => {
                         self.expect_empty(rest)?;
                         let num_instructions = self.instructions.len() + 1;
-                        let goto_target = self.close_for(num_instructions)?;
+                        let goto_target = self.close_for(num_instructions, discriminant)?;
                         self.instructions.push(Instruction::Goto(goto_target));
                         self.instructions.push(Instruction::PopContext);
                     }
@@ -142,9 +131,10 @@ impl<'template> TemplateCompiler<'template> {
                         self.instructions.push(Instruction::Call(name, path));
                     }
                     _ => {
-                        return Err(ParseError {
-                            msg: format!("Unknown block type '{}'", discriminant),
-                        })
+                        return Err(self.parse_error(
+                            discriminant,
+                            format!("Unknown block type '{}'", discriminant),
+                        ));
                     }
                 }
             // Values, of the form { dotted.path.to.value.in.context }
@@ -172,22 +162,56 @@ impl<'template> TemplateCompiler<'template> {
         Ok(self.instructions)
     }
 
+    /// Splits a string into a list of named segments which can later be used to look up values in the
+    /// context.
+    fn parse_path(&self, text: &'template str) -> Result<Path<'template>> {
+        if !text.starts_with('@') {
+            Ok(text.split('.').collect::<Vec<_>>())
+        } else if KNOWN_KEYWORDS.iter().any(|k| *k == text) {
+            Ok(vec![text])
+        } else {
+            Err(self.parse_error(text, format!("Invalid keyword name '{}'", text)))
+        }
+    }
+
+    /// Finds the line number and column where an error occurred. Location is the substring of
+    /// self.original_text where the error was found, and msg is the error message.
+    fn parse_error(&self, location: &str, msg: String) -> Error {
+        let offset = location.as_ptr() as isize - self.original_text.as_ptr() as isize;
+        let parsed_already = &self.original_text[0..(offset as usize)];
+
+        let mut line = 1;
+        let mut column = 0;
+
+        for byte in parsed_already.bytes() {
+            match byte as char {
+                '\n' => {
+                    line += 1;
+                    column = 0;
+                }
+                _ => {
+                    column += 1;
+                }
+            }
+        }
+
+        ParseError { msg, line, column }
+    }
+
     /// Tags which should have no text after the discriminant use this to raise an error if
     /// text is found.
     fn expect_empty(&self, text: &str) -> Result<()> {
         if text.is_empty() {
             Ok(())
         } else {
-            Err(ParseError {
-                msg: format!("Unexpected text '{}'", text),
-            })
+            Err(self.parse_error(text, format!("Unexpected text '{}'", text)))
         }
     }
 
     /// Close the branch that is on top of the block stack by setting its target instruction
     /// and popping it from the stack. Returns an error if the top of the block stack is not a
     /// branch.
-    fn close_branch(&mut self, new_target: usize) -> Result<()> {
+    fn close_branch(&mut self, new_target: usize, discriminant: &str) -> Result<()> {
         let branch_block = self.block_stack.pop();
         if let Some(Block::Branch(index)) = branch_block {
             match &mut self.instructions[index] {
@@ -202,17 +226,18 @@ impl<'template> TemplateCompiler<'template> {
                 _ => panic!(),
             }
         } else {
-            Err(ParseError {
-                msg: "Found a closing endif or else which doesn't match with a preceding if."
+            Err(self.parse_error(
+                discriminant,
+                "Found a closing endif or else which doesn't match with a preceding if."
                     .to_string(),
-            })
+            ))
         }
     }
 
     /// Close the for loop that is on top of the block stack by setting its target instruction and
     /// popping it from the stack. Returns an error if the top of the stack is not a for loop.
     /// Returns the index of the loop's Iterate instruction for further processing.
-    fn close_for(&mut self, new_target: usize) -> Result<usize> {
+    fn close_for(&mut self, new_target: usize, discriminant: &str) -> Result<usize> {
         let branch_block = self.block_stack.pop();
         if let Some(Block::For(index)) = branch_block {
             match &mut self.instructions[index] {
@@ -223,9 +248,10 @@ impl<'template> TemplateCompiler<'template> {
                 _ => panic!(),
             }
         } else {
-            Err(ParseError {
-                msg: "Found a closing endfor which doesn't match with a preceding for.".to_string(),
-            })
+            Err(self.parse_error(
+                discriminant,
+                "Found a closing endfor which doesn't match with a preceding for.".to_string(),
+            ))
         }
     }
 
@@ -257,10 +283,10 @@ impl<'template> TemplateCompiler<'template> {
         if let Some(index) = tag.find('|') {
             let (path_str, name_str) = tag.split_at(index);
             let name = name_str[1..].trim();
-            let path = parse_path(path_str.trim())?;
+            let path = self.parse_path(path_str.trim())?;
             Ok((path, Some(name)))
         } else {
-            Ok((parse_path(tag)?, None))
+            Ok((self.parse_path(tag)?, None))
         }
     }
 
@@ -304,20 +330,22 @@ impl<'template> TemplateCompiler<'template> {
                 self.remaining_text = remaining;
                 Ok(tag)
             } else {
-                Err(ParseError {
-                    msg: format!(
+                Err(self.parse_error(
+                    line,
+                    format!(
                         "Expected a closing '{}' but found end-of-line instead.",
                         expected_close
                     ),
-                })
+                ))
             }
         } else {
-            Err(ParseError {
-                msg: format!(
+            Err(self.parse_error(
+                self.remaining_text,
+                format!(
                     "Expected a closing '{}' but found end-of-text instead.",
                     expected_close
                 ),
-            })
+            ))
         }
     }
 
@@ -328,11 +356,11 @@ impl<'template> TemplateCompiler<'template> {
     ) -> Result<(Path<'template>, Option<&'template str>)> {
         if let Some(index) = with_text.find(" as ") {
             let (path_str, name_str) = with_text.split_at(index);
-            let path = parse_path(path_str.trim())?;
+            let path = self.parse_path(path_str.trim())?;
             let name = name_str[" as ".len()..].trim();
             Ok((path, Some(name)))
         } else {
-            let path = parse_path(with_text)?;
+            let path = self.parse_path(with_text)?;
             Ok((path, None))
         }
     }
@@ -342,12 +370,13 @@ impl<'template> TemplateCompiler<'template> {
         if let Some(index) = for_text.find(" in ") {
             let (name_str, path_str) = for_text.split_at(index);
             let name = name_str.trim();
-            let path = parse_path(path_str[" in ".len()..].trim())?;
+            let path = self.parse_path(path_str[" in ".len()..].trim())?;
             Ok((path, name))
         } else {
-            Err(ParseError {
-                msg: format!("Unable to parse for block text '{}'", for_text),
-            })
+            Err(self.parse_error(
+                for_text,
+                format!("Unable to parse for block text '{}'", for_text),
+            ))
         }
     }
 
@@ -356,12 +385,13 @@ impl<'template> TemplateCompiler<'template> {
         if let Some(index) = call_text.find(" with ") {
             let (name_str, path_str) = call_text.split_at(index);
             let name = name_str.trim();
-            let path = parse_path(path_str[" with ".len()..].trim())?;
+            let path = self.parse_path(path_str[" with ".len()..].trim())?;
             Ok((name, path))
         } else {
-            Err(ParseError {
-                msg: format!("Unable to parse call block text '{}'", call_text),
-            })
+            Err(self.parse_error(
+                call_text,
+                format!("Unable to parse call block text '{}'", call_text),
+            ))
         }
     }
 }
@@ -571,5 +601,28 @@ mod test {
     fn test_disallows_invalid_keywords() {
         let text = "{ @foo }";
         compile(text).unwrap_err();
+    }
+
+    #[test]
+    fn test_diallows_unknown_block_type() {
+        let text = "{{ foobar }}";
+        compile(text).unwrap_err();
+    }
+
+    #[test]
+    fn test_parse_error_line_column_num() {
+        let text = "\n\n\n{{ foobar }}";
+        let err = compile(text).unwrap_err();
+        if let ParseError {
+            msg: _,
+            line,
+            column,
+        } = err
+        {
+            assert_eq!(4, line);
+            assert_eq!(3, column);
+        } else {
+            assert!(false, "Should have returned a parse error");
+        }
     }
 }
