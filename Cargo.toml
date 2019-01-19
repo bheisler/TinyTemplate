@@ -1,8 +1,18 @@
 [package]
 name = "tinytemplate"
-version = "0.1.0"
-authors = ["Brook Heisler <redattack34@gmail.com>"]
+version = "1.0.0"
+authors = ["Brook Heisler <brookheisler@gmail.com>"]
 edition = "2015"
+
+description = "Simple, lightweight template engine"
+repository = "https://github.com/bheisler/TinyTemplate"
+readme = "README.md"
+license = "Apache-2.0 OR MIT"
+keywords = ["template", "html"]
+categories = ["template-engine"]
+
+[badges]
+maintenance = { status = "passively-maintained" }
 
 [dependencies]
 serde = "1.0"
