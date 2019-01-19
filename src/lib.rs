@@ -43,7 +43,7 @@
 //!
 //! static TEMPLATE : &'static str = "Hello {name}!";
 //!
-//! pub fn main() -> Result<(), Box<dyn Error>> {
+//! pub fn main() -> Result<(), Box<Error>> {
 //!     let mut tt = TinyTemplate::new();
 //!     tt.add_template("hello", TEMPLATE)?;
 //!
