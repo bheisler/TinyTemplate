@@ -206,7 +206,7 @@ impl<'template> TinyTemplate<'template> {
         let value = serde_json::to_value(context)?;
         match self.templates.get(template) {
             Some(tmpl) => tmpl.render(&value, &self.templates, &self.formatters),
-            None => Err(Error::RenderError {
+            None => Err(Error::GenericError {
                 msg: format!("Unknown template '{}'", template),
             }),
         }

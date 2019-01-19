@@ -57,10 +57,10 @@ pub(crate) enum Instruction<'template> {
 pub(crate) fn path_to_str(path: PathSlice) -> String {
     let mut path_str = "".to_string();
     for (i, step) in path.iter().enumerate() {
-        path_str.push_str(step);
         if i > 0 {
             path_str.push('.');
         }
+        path_str.push_str(step);
     }
     path_str
 }

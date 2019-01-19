@@ -34,6 +34,7 @@ enum ContextElement<'render, 'template> {
 /// Helper struct which mostly exists so that I have somewhere to put functions that access the
 /// rendering context stack.
 struct RenderContext<'render, 'template> {
+    original_text: &'template str,
     context_stack: Vec<ContextElement<'render, 'template>>,
 }
 impl<'render, 'template> RenderContext<'render, 'template> {
@@ -65,7 +66,7 @@ impl<'render, 'template> RenderContext<'render, 'template> {
         for step in path.iter() {
             match current.get(step) {
                 Some(next) => current = next,
-                None => return Err(lookup_error(step, path, current)),
+                None => return Err(lookup_error(self.original_text, step, path, current)),
             }
         }
         Ok(current)
@@ -79,7 +80,7 @@ impl<'render, 'template> RenderContext<'render, 'template> {
                 _ => continue,
             }
         }
-        Err(RenderError {
+        Err(GenericError {
             msg: "Used @index outside of a foreach block.".to_string(),
         })
     }
@@ -89,6 +90,7 @@ impl<'render, 'template> RenderContext<'render, 'template> {
 /// template as well as the length of the original template string, which is used as a guess to
 /// pre-size the output string buffer.
 pub(crate) struct Template<'template> {
+    original_text: &'template str,
     instructions: Vec<Instruction<'template>>,
     template_len: usize,
 }
@@ -96,6 +98,7 @@ impl<'template> Template<'template> {
     /// Create a Template from the given template string.
     pub fn compile(text: &'template str) -> Result<Template> {
         Ok(Template {
+            original_text: text,
             template_len: text.len(),
             instructions: TemplateCompiler::new(text).compile()?,
         })
@@ -125,6 +128,7 @@ impl<'template> Template<'template> {
     ) -> Result<()> {
         let mut program_counter = 0;
         let mut render_context = RenderContext {
+            original_text: self.original_text,
             context_stack: vec![ContextElement::Object(context)],
         };
 
@@ -163,8 +167,13 @@ impl<'template> Template<'template> {
                     // The @ keywords aren't supported for formatted values. Should they be?
                     let value_to_render = render_context.lookup(path)?;
                     match formatter_registry.get(name) {
-                        Some(formatter) => formatter(value_to_render, output)?,
-                        None => return Err(unknown_formatter(name)),
+                        Some(formatter) => {
+                            let formatter_result = formatter(value_to_render, output);
+                            if let Err(err) = formatter_result {
+                                return Err(called_formatter_error(self.original_text, name, err));
+                            }
+                        }
+                        None => return Err(unknown_formatter(self.original_text, name)),
                     }
                     program_counter += 1;
                 }
@@ -188,7 +197,7 @@ impl<'template> Template<'template> {
                             Value::Number(n) => match n.as_f64() {
                                 Some(float) => float == 0.0,
                                 None => {
-                                    return Err(truthiness_error(path));
+                                    return Err(truthiness_error(self.original_text, path));
                                 }
                             },
                             Value::String(s) => !s.is_empty(),
@@ -227,7 +236,7 @@ impl<'template> Template<'template> {
                                 arr.iter(),
                             ))
                         }
-                        _ => return Err(not_iterable_error(path)),
+                        _ => return Err(not_iterable_error(self.original_text, path)),
                     };
                     program_counter += 1;
                 }
@@ -260,13 +269,22 @@ impl<'template> Template<'template> {
                 Instruction::Call(template_name, path) => {
                     let context_value = render_context.lookup(path)?;
                     match template_registry.get(template_name) {
-                        Some(templ) => templ.render_into(
-                            context_value,
-                            template_registry,
-                            formatter_registry,
-                            output,
-                        )?,
-                        None => return Err(unknown_template(template_name)),
+                        Some(templ) => {
+                            let called_templ_result = templ.render_into(
+                                context_value,
+                                template_registry,
+                                formatter_registry,
+                                output,
+                            );
+                            if let Err(err) = called_templ_result {
+                                return Err(called_template_error(
+                                    self.original_text,
+                                    template_name,
+                                    err,
+                                ));
+                            }
+                        }
+                        None => return Err(unknown_template(self.original_text, template_name)),
                     }
                     program_counter += 1;
                 }
@@ -283,6 +301,7 @@ mod test {
 
     fn compile(text: &'static str) -> Template<'static> {
         Template {
+            original_text: text,
             template_len: text.len(),
             instructions: TemplateCompiler::new(text).compile().unwrap(),
         }

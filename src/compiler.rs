@@ -2,8 +2,8 @@
 /// a simple bytecode interpreter (see the [instruction] module for more details) to render templates.
 /// The [`TemplateCompiler`](struct.TemplateCompiler.html) struct is responsible for parsing the
 /// template strings and generating the appropriate bytecode instructions.
-use error::Error::{self, *};
-use error::Result;
+use error::Error::*;
+use error::{get_offset, Error, Result};
 use instruction::{Instruction, Path};
 
 /// The end point of a branch or goto instruction is not known.
@@ -194,24 +194,7 @@ impl<'template> TemplateCompiler<'template> {
     /// Finds the line number and column where an error occurred. Location is the substring of
     /// self.original_text where the error was found, and msg is the error message.
     fn parse_error(&self, location: &str, msg: String) -> Error {
-        let offset = location.as_ptr() as isize - self.original_text.as_ptr() as isize;
-        let parsed_already = &self.original_text[0..(offset as usize)];
-
-        let mut line = 1;
-        let mut column = 0;
-
-        for byte in parsed_already.bytes() {
-            match byte as char {
-                '\n' => {
-                    line += 1;
-                    column = 0;
-                }
-                _ => {
-                    column += 1;
-                }
-            }
-        }
-
+        let (line, column) = get_offset(self.original_text, location);
         ParseError { msg, line, column }
     }
 
