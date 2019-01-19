@@ -3,12 +3,18 @@
 <div align="center">Minimal Lightweight Text Templating</div>
 
 <div align="center">
-    <a href="https://bheisler.github.io/TinyTemplate/tinytemplate/index.html">API Documentation (master branch)</a>
+    <a href="https://docs.rs/tinytemplate/">API Documentation</a>
+    |
+    <a href="https://github.com/bheisler/TinyTemplate/blob/master/CHANGELOG.md">Changelog</a>
 </div>
 
 <div align="center">
 	<a href="https://travis-ci.org/bheisler/TinyTemplate">
         <img src="https://travis-ci.org/bheisler/TinyTemplate.svg?branch=master" alt="Travis-CI">
+    </a>
+    |
+    <a href="https://crates.io/crates/tinytemplate">
+        <img src="https://img.shields.io/crates/v/tinytemplate.svg" alt=Crates.io">
     </a>
 </div>
 
