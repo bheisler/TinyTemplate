@@ -157,5 +157,18 @@
 //!
 //! This will print "Hello world!".
 //!
+//! ### Escaping Curly Braces
+//!
+//! If your template contains opening curly-braces (`{`), they must be escaped using a leading `\`
+//! character. For example:
+//!
+//! ```text
+//! h2 \{
+//!     font-size: {fontsize};
+//! }
+//! ```
+//!
+//! If using a string literal in rust source code, the `\` itself must be escaped, producing `\\{`.
+//!
 
 // There's nothing here, this module is solely for documentation.

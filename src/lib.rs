@@ -82,13 +82,6 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use template::Template;
 
-/*
-TODO:
-- CI builds
-- License files
-- Fill in the Cargo.toml file
-*/
-
 /// Type alias for closures which can be used as value formatters.
 pub type ValueFormatter = Fn(&Value, &mut String) -> Result<()>;
 

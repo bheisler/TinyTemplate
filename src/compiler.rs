@@ -149,12 +149,23 @@ impl<'template> TemplateCompiler<'template> {
                 self.instructions.push(instruction);
             // All other text - just consume characters until we see a {
             } else {
-                let mut text = self.consume_text();
-                if self.trim_next {
-                    text = text.trim_start();
-                    self.trim_next = false;
+                let mut escaped = false;
+                loop {
+                    let mut text = self.consume_text(escaped);
+                    if self.trim_next {
+                        text = text.trim_start();
+                        self.trim_next = false;
+                    }
+                    escaped = text.ends_with('\\');
+                    if escaped {
+                        text = &text[0..(text.len() - 1)];
+                    }
+                    self.instructions.push(Instruction::Literal(text));
+
+                    if !escaped {
+                        break;
+                    }
                 }
-                self.instructions.push(Instruction::Literal(text));
             }
         }
 
@@ -261,12 +272,22 @@ impl<'template> TemplateCompiler<'template> {
         }
     }
 
-    /// Advance the cursor to the next { and return the consumed text.
-    fn consume_text(&mut self) -> &'template str {
-        let position = self
-            .remaining_text
+    /// Advance the cursor to the next { and return the consumed text. If `escaped` is true, skips
+    /// a { at the start of the text.
+    fn consume_text(&mut self, escaped: bool) -> &'template str {
+        let search_substr = if escaped {
+            &self.remaining_text[1..]
+        } else {
+            self.remaining_text
+        };
+
+        let mut position = search_substr
             .find('{')
             .unwrap_or_else(|| self.remaining_text.len());
+        if escaped {
+            position += 1;
+        }
+
         let (text, remaining) = self.remaining_text.split_at(position);
         self.remaining_text = remaining;
         text
@@ -569,6 +590,17 @@ mod test {
         let instructions = compile(text).unwrap();
         assert_eq!(1, instructions.len());
         assert_eq!(&Call("my_macro", vec!["foo", "bar"]), &instructions[0]);
+    }
+
+    #[test]
+    fn test_curly_brace_escaping() {
+        let text = "body \\{ \nfont-size: {fontsize} \n}";
+        let instructions = compile(text).unwrap();
+        assert_eq!(4, instructions.len());
+        assert_eq!(&Literal("body "), &instructions[0]);
+        assert_eq!(&Literal("{ \nfont-size: "), &instructions[1]);
+        assert_eq!(&Value(vec!["fontsize"]), &instructions[2]);
+        assert_eq!(&Literal(" \n}"), &instructions[3]);
     }
 
     #[test]
