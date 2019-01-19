@@ -1,0 +1,34 @@
+sudo: true
+
+language: rust
+
+cache: cargo
+
+dist: xenial
+
+rust:
+  - stable
+
+os:
+  - linux
+
+matrix:
+  include:
+    - os: linux
+    - os: linux
+      env: RUSTFMT=yes
+    - os: linux
+      env: CLIPPY=yes
+
+install:
+  - bash ci/install.sh
+
+script:
+  - bash ci/script.sh
+
+branches:
+  only: master
+
+notifications:
+  email:
+    on_success: never

@@ -12,6 +12,7 @@ keywords = ["template", "html"]
 categories = ["template-engine"]
 
 [badges]
+travis-ci = { repository = "bheisler/TinyTemplate" }
 maintenance = { status = "passively-maintained" }
 
 [dependencies]
