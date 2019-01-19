@@ -6,7 +6,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-## 1.0.1 - 2019-01-19
+## [1.0.1] - 2019-01-19
 ### Added
 - Added support for older versions of Rust (back to 1.26).
 
@@ -14,4 +14,5 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 - Initial release on Crates.io.
 
-[Unreleased]: https://github.com/bheisler/TinyTemplate/compare/1.0.0...HEAD
+[Unreleased]: https://github.com/bheisler/TinyTemplate/compare/1.0.1...HEAD
+[1.0.1]: https://github.com/bheisler/TinyTemplate/compare/1.0.0...1.0.1
