@@ -206,13 +206,6 @@ impl<'template> Template<'template> {
                         program_counter += 1;
                     }
                 }
-                Instruction::PushContext(path) => {
-                    let context_value = render_context.lookup(path)?;
-                    render_context
-                        .context_stack
-                        .push(ContextElement::Object(context_value));
-                    program_counter += 1;
-                }
                 Instruction::PushNamedContext(path, name) => {
                     let context_value = render_context.lookup(path)?;
                     render_context
@@ -491,18 +484,6 @@ mod test {
 
     #[test]
     fn test_with() {
-        let template = compile("{{ with nested }}{value}{{endwith}}");
-        let context = context();
-        let template_registry = other_templates();
-        let formatter_registry = formatters();
-        let string = template
-            .render(&context, &template_registry, &formatter_registry)
-            .unwrap();
-        assert_eq!("10", &string);
-    }
-
-    #[test]
-    fn test_named_with() {
         let template = compile("{{ with nested as n }}{ n.value } { number }{{endwith}}");
         let context = context();
         let template_registry = other_templates();

@@ -94,10 +94,7 @@ impl<'template> TemplateCompiler<'template> {
                     }
                     "with" => {
                         let (path, name) = self.parse_with(rest)?;
-                        let instruction = match name {
-                            Some(name) => Instruction::PushNamedContext(path, name),
-                            None => Instruction::PushContext(path),
-                        };
+                        let instruction = Instruction::PushNamedContext(path, name);
                         self.instructions.push(instruction);
                         self.block_stack.push(Block::With);
                     }
@@ -350,18 +347,20 @@ impl<'template> TemplateCompiler<'template> {
     }
 
     /// Parse a with tag to separate the value path from the (optional) name.
-    fn parse_with(
-        &self,
-        with_text: &'template str,
-    ) -> Result<(Path<'template>, Option<&'template str>)> {
+    fn parse_with(&self, with_text: &'template str) -> Result<(Path<'template>, &'template str)> {
         if let Some(index) = with_text.find(" as ") {
             let (path_str, name_str) = with_text.split_at(index);
             let path = self.parse_path(path_str.trim())?;
             let name = name_str[" as ".len()..].trim();
-            Ok((path, Some(name)))
+            Ok((path, name))
         } else {
-            let path = self.parse_path(with_text)?;
-            Ok((path, None))
+            Err(self.parse_error(
+                with_text,
+                format!(
+                    "Expected 'as <path>' in with block, but found \"{}\" instead",
+                    with_text
+                ),
+            ))
         }
     }
 
@@ -481,16 +480,6 @@ mod test {
 
     #[test]
     fn test_with() {
-        let text = "{{ with foo }}Hello!{{ endwith }}";
-        let instructions = compile(text).unwrap();
-        assert_eq!(3, instructions.len());
-        assert_eq!(&PushContext(vec!["foo"]), &instructions[0]);
-        assert_eq!(&Literal("Hello!"), &instructions[1]);
-        assert_eq!(&PopContext, &instructions[2]);
-    }
-
-    #[test]
-    fn test_named_with() {
         let text = "{{ with foo as bar }}Hello!{{ endwith }}";
         let instructions = compile(text).unwrap();
         assert_eq!(3, instructions.len());
@@ -613,12 +602,7 @@ mod test {
     fn test_parse_error_line_column_num() {
         let text = "\n\n\n{{ foobar }}";
         let err = compile(text).unwrap_err();
-        if let ParseError {
-            msg: _,
-            line,
-            column,
-        } = err
-        {
+        if let ParseError { line, column, .. } = err {
             assert_eq!(4, line);
             assert_eq!(3, column);
         } else {

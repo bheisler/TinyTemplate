@@ -30,9 +30,6 @@ pub(crate) enum Instruction<'template> {
     /// is truthy (if the boolean is true) or falsy (if the boolean is false)
     Branch(Path<'template>, bool, usize),
 
-    /// Push a new object context on the stack, shadowing everything that is on it currently.
-    PushContext(Path<'template>),
-
     /// Push a named context on the stack, shadowing only that name.
     PushNamedContext(Path<'template>, &'template str),
 

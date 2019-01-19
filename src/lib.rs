@@ -86,7 +86,6 @@ use template::Template;
 TODO:
 - CI builds
 - Should give parser error on unclosed if/for/with block.
-- Remove the global with block
 - License files
 - Fill in the Cargo.toml file
 */

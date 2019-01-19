@@ -99,23 +99,7 @@
 //!
 //! ### With Blocks
 //!
-//! Templates can use with blocks to shadow the context. With blocks have two forms. The first form
-//! completely shadows the context:
-//!
-//! "{{ with path.to.value }}...{{ endwith }}"
-//!
-//! For example:
-//!
-//! ```text
-//! {{ with person }}
-//! Hello { name }!
-//! {{ endwith }}
-//! ```
-//!
-//! This will look up and print "person.name". The regular context is not accessible inside a with
-//! block of this form.
-//!
-//! The second form of with blocks only partially shadows the outer context, the same way that
+//! Templates can use with blocks to partially shadows the outer context, the same way that
 //! for-loops do. These are formed like so:
 //!
 //! "{{ with path.to.value as name }}..{{ endwith }}""
@@ -128,8 +112,8 @@
 //! {{ endwith }}
 //! ```
 //!
-//! This looks up "person.spouse.name" and prints that. In this case, only the name "s" is shadowed
-//! within the with block and the outer context is still accessible.
+//! This looks up "person.spouse" and adds that to the context as "s" within the block. Only the
+//! name "s" is shadowed within the with block and otherwise the outer context is still accessible.
 //!
 //! ### Trimming Whitespace
 //!
