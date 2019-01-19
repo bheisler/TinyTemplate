@@ -333,7 +333,7 @@ mod test {
             nested: NestedContext { value: 10 },
             escapes: "1:< 2:> 3:& 4:' 5:\"",
         };
-        serde_json::to_value(&ctx).unwrap()
+        ::serde_json::to_value(&ctx).unwrap()
     }
 
     fn other_templates() -> HashMap<&'static str, Template<'static>> {
