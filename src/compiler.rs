@@ -28,7 +28,7 @@ pub(crate) struct TemplateCompiler<'template> {
     original_text: &'template str,
     remaining_text: &'template str,
     instructions: Vec<Instruction<'template>>,
-    block_stack: Vec<Block>,
+    block_stack: Vec<(&'template str, Block)>,
 
     /// When we see a `{foo -}` or similar, we need to remember to left-trim the next text block we
     /// encounter.
@@ -75,7 +75,7 @@ impl<'template> TemplateCompiler<'template> {
                             (self.parse_path(rest)?, false)
                         };
                         self.block_stack
-                            .push(Block::Branch(self.instructions.len()));
+                            .push((discriminant, Block::Branch(self.instructions.len())));
                         self.instructions
                             .push(Instruction::Branch(path, !negated, UNKNOWN));
                     }
@@ -84,7 +84,7 @@ impl<'template> TemplateCompiler<'template> {
                         let num_instructions = self.instructions.len() + 1;
                         self.close_branch(num_instructions, discriminant)?;
                         self.block_stack
-                            .push(Block::Branch(self.instructions.len()));
+                            .push((discriminant, Block::Branch(self.instructions.len())));
                         self.instructions.push(Instruction::Goto(UNKNOWN))
                     }
                     "endif" => {
@@ -96,11 +96,11 @@ impl<'template> TemplateCompiler<'template> {
                         let (path, name) = self.parse_with(rest)?;
                         let instruction = Instruction::PushNamedContext(path, name);
                         self.instructions.push(instruction);
-                        self.block_stack.push(Block::With);
+                        self.block_stack.push((discriminant, Block::With));
                     }
                     "endwith" => {
                         self.expect_empty(rest)?;
-                        if let Some(Block::With) = self.block_stack.pop() {
+                        if let Some((_, Block::With)) = self.block_stack.pop() {
                             self.instructions.push(Instruction::PopContext)
                         } else {
                             return Err(self.parse_error(
@@ -113,7 +113,8 @@ impl<'template> TemplateCompiler<'template> {
                         let (path, name) = self.parse_for(rest)?;
                         self.instructions
                             .push(Instruction::PushIterationContext(path, name));
-                        self.block_stack.push(Block::For(self.instructions.len()));
+                        self.block_stack
+                            .push((discriminant, Block::For(self.instructions.len())));
                         self.instructions.push(Instruction::Iterate(UNKNOWN));
                     }
                     "endfor" => {
@@ -156,6 +157,14 @@ impl<'template> TemplateCompiler<'template> {
                 self.instructions.push(Instruction::Literal(text));
             }
         }
+
+        if let Some((text, _)) = self.block_stack.pop() {
+            return Err(self.parse_error(
+                text,
+                "Expected block-closing tag, but reached the end of input.".to_string(),
+            ));
+        }
+
         Ok(self.instructions)
     }
 
@@ -210,7 +219,7 @@ impl<'template> TemplateCompiler<'template> {
     /// branch.
     fn close_branch(&mut self, new_target: usize, discriminant: &str) -> Result<()> {
         let branch_block = self.block_stack.pop();
-        if let Some(Block::Branch(index)) = branch_block {
+        if let Some((_, Block::Branch(index))) = branch_block {
             match &mut self.instructions[index] {
                 Instruction::Branch(_, _, target) => {
                     *target = new_target;
@@ -236,7 +245,7 @@ impl<'template> TemplateCompiler<'template> {
     /// Returns the index of the loop's Iterate instruction for further processing.
     fn close_for(&mut self, new_target: usize, discriminant: &str) -> Result<usize> {
         let branch_block = self.block_stack.pop();
-        if let Some(Block::For(index)) = branch_block {
+        if let Some((_, Block::For(index))) = branch_block {
             match &mut self.instructions[index] {
                 Instruction::Iterate(target) => {
                     *target = new_target;
@@ -608,5 +617,11 @@ mod test {
         } else {
             assert!(false, "Should have returned a parse error");
         }
+    }
+
+    #[test]
+    fn test_parse_error_on_unclosed_if() {
+        let text = "{{ if foo }}";
+        compile(text).unwrap_err();
     }
 }
