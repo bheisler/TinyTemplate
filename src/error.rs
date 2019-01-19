@@ -3,6 +3,7 @@
 use instruction::{path_to_str, PathSlice};
 use serde_json::Error as SerdeJsonError;
 use serde_json::Value;
+use std::error::Error as StdError;
 use std::fmt;
 
 /// Enum representing the potential errors that TinyTemplate can encounter.
@@ -79,9 +80,22 @@ impl fmt::Display for Error {
         }
     }
 }
-impl std::error::Error for Error {}
+impl StdError for Error {
+    fn description(&self) -> &str {
+        match self {
+            Error::ParseError { .. } => "ParseError",
+            Error::RenderError { .. } => "RenderError",
+            Error::SerdeError { .. } => "SerdeError",
+            Error::GenericError { msg } => &msg,
+            Error::StdFormatError { .. } => "StdFormatError",
+            Error::CalledTemplateError { .. } => "CalledTemplateError",
+            Error::CalledFormatterError { .. } => "CalledFormatterError",
+            Error::__NonExhaustive => unreachable!(),
+        }
+    }
+}
 
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = ::std::result::Result<T, Error>;
 
 pub(crate) fn lookup_error(source: &str, step: &str, path: PathSlice, current: &Value) -> Error {
     let avail_str = if let Value::Object(object_map) = current {

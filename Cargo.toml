@@ -2,7 +2,6 @@
 name = "tinytemplate"
 version = "1.0.0"
 authors = ["Brook Heisler <brookheisler@gmail.com>"]
-edition = "2015"
 
 description = "Simple, lightweight template engine"
 repository = "https://github.com/bheisler/TinyTemplate"

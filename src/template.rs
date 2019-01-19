@@ -231,7 +231,7 @@ impl<'template> Template<'template> {
                             render_context.context_stack.push(ContextElement::Iteration(
                                 name,
                                 &Value::Null,
-                                std::usize::MAX,
+                                ::std::usize::MAX,
                                 arr.len(),
                                 arr.iter(),
                             ))

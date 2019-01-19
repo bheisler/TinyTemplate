@@ -16,6 +16,10 @@ matrix:
   include:
     - os: linux
     - os: linux
+      rust: 1.29.0
+    - os: linux
+      rust: 1.26.0
+    - os: linux
       env: RUSTFMT=yes
     - os: linux
       env: CLIPPY=yes

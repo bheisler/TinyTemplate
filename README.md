@@ -25,6 +25,7 @@ TinyTemplate is a small, minimalistic text templating system with limited depend
   - [Goals](#goals)
   - [Why TinyTemplate?](#why-tinytemplate)
   - [Quickstart](#quickstart)
+  - [Compatibility Policy](#compatibility-policy)
   - [Contributing](#contributing)
   - [Maintenance](#maintenance)
   - [License](#license)
@@ -99,6 +100,16 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 ```
 
 This should print "Hello World!" to stdout.
+
+### Compatibility Policy
+
+TinyTemplate supports the last three stable minor releases of Rust. At time of writing, this means
+Rust 1.29 or later. Older versions may work, but are not tested or guaranteed.
+
+Currently, the oldest version of Rust believed to work is 1.26. Future versions of TinyTemplate may
+break support for such old versions, and this will not be considered a breaking change. If you
+require TinyTemplate to work on old versions of Rust, you will need to stick to a
+specific patch version of TinyTemplate.
 
 ### Contributing
 

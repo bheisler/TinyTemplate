@@ -7,7 +7,7 @@ use error::{get_offset, Error, Result};
 use instruction::{Instruction, Path};
 
 /// The end point of a branch or goto instruction is not known.
-const UNKNOWN: usize = std::usize::MAX;
+const UNKNOWN: usize = ::std::usize::MAX;
 
 /// The compiler keeps a stack of the open blocks so that it can ensure that blocks are closed in
 /// the right order. The Block type is a simple enumeration of the kinds of blocks that could be
@@ -153,7 +153,7 @@ impl<'template> TemplateCompiler<'template> {
                 loop {
                     let mut text = self.consume_text(escaped);
                     if self.trim_next {
-                        text = text.trim_start();
+                        text = text.trim_left();
                         self.trim_next = false;
                     }
                     escaped = text.ends_with('\\');
@@ -303,7 +303,7 @@ impl<'template> TemplateCompiler<'template> {
     /// Right-trim whitespace from the last text block we parsed.
     fn trim_last_whitespace(&mut self) {
         if let Some(Instruction::Literal(text)) = self.instructions.last_mut() {
-            *text = text.trim_end();
+            *text = text.trim_right();
         }
     }
 
