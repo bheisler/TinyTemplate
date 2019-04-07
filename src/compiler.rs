@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 /// The compiler module houses the code which parses and compiles templates. TinyTemplate implements
 /// a simple bytecode interpreter (see the [instruction] module for more details) to render templates.
 /// The [`TemplateCompiler`](struct.TemplateCompiler.html) struct is responsible for parsing the
