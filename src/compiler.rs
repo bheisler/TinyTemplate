@@ -268,7 +268,7 @@ impl<'template> TemplateCompiler<'template> {
 
         let mut position = search_substr
             .find('{')
-            .unwrap_or_else(|| self.remaining_text.len());
+            .unwrap_or_else(|| search_substr.len());
         if escaped {
             position += 1;
         }
@@ -632,7 +632,7 @@ mod test {
             assert_eq!(4, line);
             assert_eq!(3, column);
         } else {
-            assert!(false, "Should have returned a parse error");
+            panic!("Should have returned a parse error");
         }
     }
 
@@ -640,5 +640,14 @@ mod test {
     fn test_parse_error_on_unclosed_if() {
         let text = "{{ if foo }}";
         compile(text).unwrap_err();
+    }
+
+    #[test]
+    fn test_parse_escaped_open_curly_brace() {
+        let text: &str = r"hello \{world}";
+        let instructions = compile(text).unwrap();
+        assert_eq!(2, instructions.len());
+        assert_eq!(&Literal("hello "), &instructions[0]);
+        assert_eq!(&Literal("{world}"), &instructions[1]);
     }
 }
