@@ -552,7 +552,8 @@ mod test {
 
     #[test]
     fn test_for_loop_last() {
-        let template = compile("{{ for a in array }}{{ if @last}}{ @index }{{ endif }}{{ endfor }}");
+        let template =
+            compile("{{ for a in array }}{{ if @last}}{ @index }{{ endif }}{{ endfor }}");
         let context = context();
         let template_registry = other_templates();
         let formatter_registry = formatters();
