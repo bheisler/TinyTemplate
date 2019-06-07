@@ -153,7 +153,7 @@ impl<'template> Template<'template> {
                             }
                             "@last" => {
                                 let (index, length) = render_context.lookup_index()?;
-                                write!(output, "{}", index == length).unwrap()
+                                write!(output, "{}", index == length - 1).unwrap()
                             }
                             _ => panic!(), // This should have been caught by the parser.
                         }
@@ -185,7 +185,7 @@ impl<'template> Template<'template> {
                             "@first" => render_context.lookup_index()?.0 == 0,
                             "@last" => {
                                 let (index, length) = render_context.lookup_index()?;
-                                index == length
+                                index == (length - 1)
                             }
                             _ => panic!(), // This should have been caught by the parser.
                         }
@@ -548,6 +548,18 @@ mod test {
             .render(&context, &template_registry, &formatter_registry)
             .unwrap();
         assert_eq!("0", &string);
+    }
+
+    #[test]
+    fn test_for_loop_last() {
+        let template = compile("{{ for a in array }}{{ if @last}}{ @index }{{ endif }}{{ endfor }}");
+        let context = context();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
+        assert_eq!("2", &string);
     }
 
     #[test]
