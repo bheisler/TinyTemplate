@@ -195,7 +195,7 @@ impl<'template> Template<'template> {
                             Value::Null => false,
                             Value::Bool(b) => *b,
                             Value::Number(n) => match n.as_f64() {
-                                Some(float) => float == 0.0,
+                                Some(float) => float != 0.0,
                                 None => {
                                     return Err(truthiness_error(self.original_text, path));
                                 }
