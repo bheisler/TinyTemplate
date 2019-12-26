@@ -1,6 +1,6 @@
 [package]
 name = "tinytemplate"
-version = "1.0.2"
+version = "1.0.3"
 authors = ["Brook Heisler <brookheisler@gmail.com>"]
 
 description = "Simple, lightweight template engine"
@@ -20,7 +20,7 @@ serde_json = "1.0"
 
 [dev-dependencies]
 serde_derive = "1.0"
-criterion = "0.2"
+criterion = "0.3"
 
 [[bench]]
 name = "benchmarks"
