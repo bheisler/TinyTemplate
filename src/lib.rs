@@ -83,7 +83,7 @@ use std::fmt::Write;
 use template::Template;
 
 /// Type alias for closures which can be used as value formatters.
-pub type ValueFormatter = Fn(&Value, &mut String) -> Result<()>;
+pub type ValueFormatter = dyn Fn(&Value, &mut String) -> Result<()>;
 
 /// Appends `value` to `output`, performing HTML-escaping in the process.
 pub fn escape(value: &str, output: &mut String) {
