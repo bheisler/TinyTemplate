@@ -89,8 +89,12 @@ impl<'render, 'template> RenderContext<'render, 'template> {
     fn lookup_root(&self) -> Result<&'render Value> {
         match self.context_stack.get(0) {
             Some(ContextElement::Object(obj)) => Ok(obj),
-            Some(_) => panic!("Expected Object value at root of context stack, but was something else."),
-            None => panic!("Attempted to do a lookup with an empty context stack. That shouldn't be possible."),
+            Some(_) => {
+                panic!("Expected Object value at root of context stack, but was something else.")
+            }
+            None => panic!(
+                "Attempted to do a lookup with an empty context stack. That shouldn't be possible."
+            ),
         }
     }
 }
@@ -300,12 +304,12 @@ impl<'template> Template<'template> {
         Ok(())
     }
 
-    fn value_is_truthy(&self, value: & Value, path: &[&str]) -> Result<bool> {
+    fn value_is_truthy(&self, value: &Value, path: &[&str]) -> Result<bool> {
         let truthy = match value {
             Value::Null => false,
             Value::Bool(b) => *b,
             Value::Number(n) => match n.as_f64() {
-                Some(float) => float != 0.0,
+                Some(float) => float == 0.0,
                 None => {
                     return Err(truthiness_error(self.original_text, path));
                 }
@@ -661,8 +665,7 @@ mod test {
 
     #[test]
     fn test_root_print() {
-        let template =
-            compile("{ @root }");
+        let template = compile("{ @root }");
         let context = "Hello World!";
         let context = ::serde_json::to_value(&context).unwrap();
         let template_registry = other_templates();
@@ -675,8 +678,7 @@ mod test {
 
     #[test]
     fn test_root_branch() {
-        let template =
-            compile("{{ if @root }}Hello World!{{ endif }}");
+        let template = compile("{{ if @root }}Hello World!{{ endif }}");
         let context = true;
         let context = ::serde_json::to_value(&context).unwrap();
         let template_registry = other_templates();
@@ -689,8 +691,7 @@ mod test {
 
     #[test]
     fn test_root_iterate() {
-        let template =
-            compile("{{ for a in @root }}{ a }{{ endfor }}");
+        let template = compile("{{ for a in @root }}{ a }{{ endfor }}");
         let context = vec!["foo", "bar"];
         let context = ::serde_json::to_value(&context).unwrap();
         let template_registry = other_templates();
