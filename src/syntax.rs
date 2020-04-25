@@ -103,7 +103,7 @@
 //!
 //! In case of nested loops, these values refer to the innermost loop which contains them.
 //!
-//! If the root context object is a list, the `@root` keyword can be used to iterate over the
+//! If the root context object is an array, the `@root` keyword can be used to iterate over the
 //! root object.
 //!
 //! ### With Blocks
