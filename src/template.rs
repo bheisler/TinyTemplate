@@ -234,7 +234,9 @@ impl<'template> Template<'template> {
                     let first = *path.first().unwrap();
                     let context_value = match first {
                         "@root" => render_context.lookup_root()?,
-                        other if other.starts_with("@") => panic!("Unknown keyword {}", other),
+                        other if other.starts_with('@') => {
+                            return Err(not_iterable_error(self.original_text, path))
+                        }
                         _ => render_context.lookup(path)?,
                     };
                     match context_value {
