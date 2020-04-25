@@ -84,6 +84,15 @@ impl<'render, 'template> RenderContext<'render, 'template> {
             msg: "Used @index outside of a foreach block.".to_string(),
         })
     }
+
+    /// Look up the root context object
+    fn lookup_root(&self) -> Result<&'render Value> {
+        match self.context_stack.get(0) {
+            Some(ContextElement::Object(obj)) => Ok(obj),
+            Some(_) => panic!("Expected Object value at root of context stack, but was something else."),
+            None => panic!("Attempted to do a lookup with an empty context stack. That shouldn't be possible."),
+        }
+    }
 }
 
 /// Structure representing a parsed template. It holds the bytecode program for rendering the
@@ -155,6 +164,10 @@ impl<'template> Template<'template> {
                                 let (index, length) = render_context.lookup_index()?;
                                 write!(output, "{}", index == length - 1).unwrap()
                             }
+                            "@root" => {
+                                let value_to_render = render_context.lookup_root()?;
+                                format(value_to_render, output)?;
+                            }
                             _ => panic!(), // This should have been caught by the parser.
                         }
                     } else {
@@ -187,23 +200,12 @@ impl<'template> Template<'template> {
                                 let (index, length) = render_context.lookup_index()?;
                                 index == (length - 1)
                             }
-                            _ => panic!(), // This should have been caught by the parser.
+                            "@root" => self.value_is_truthy(render_context.lookup_root()?, path)?,
+                            other => panic!("Unknown keyword {}", other), // This should have been caught by the parser.
                         }
                     } else {
                         let value_to_render = render_context.lookup(path)?;
-                        match value_to_render {
-                            Value::Null => false,
-                            Value::Bool(b) => *b,
-                            Value::Number(n) => match n.as_f64() {
-                                Some(float) => float != 0.0,
-                                None => {
-                                    return Err(truthiness_error(self.original_text, path));
-                                }
-                            },
-                            Value::String(s) => !s.is_empty(),
-                            Value::Array(arr) => !arr.is_empty(),
-                            Value::Object(_) => true,
-                        }
+                        self.value_is_truthy(value_to_render, path)?
                     };
                     if *negate {
                         truthy = !truthy;
@@ -225,7 +227,12 @@ impl<'template> Template<'template> {
                 Instruction::PushIterationContext(path, name) => {
                     // We push a context with an invalid index and no value and then wait for the
                     // following Iterate instruction to set the index and value properly.
-                    let context_value = render_context.lookup(path)?;
+                    let first = *path.first().unwrap();
+                    let context_value = match first {
+                        "@root" => render_context.lookup_root()?,
+                        other if other.starts_with("@") => panic!("Unknown keyword {}", other),
+                        _ => render_context.lookup(path)?,
+                    };
                     match context_value {
                         Value::Array(ref arr) => {
                             render_context.context_stack.push(ContextElement::Iteration(
@@ -291,6 +298,23 @@ impl<'template> Template<'template> {
             }
         }
         Ok(())
+    }
+
+    fn value_is_truthy(&self, value: & Value, path: &[&str]) -> Result<bool> {
+        let truthy = match value {
+            Value::Null => false,
+            Value::Bool(b) => *b,
+            Value::Number(n) => match n.as_f64() {
+                Some(float) => float != 0.0,
+                None => {
+                    return Err(truthiness_error(self.original_text, path));
+                }
+            },
+            Value::String(s) => !s.is_empty(),
+            Value::Array(arr) => !arr.is_empty(),
+            Value::Object(_) => true,
+        };
+        Ok(truthy)
     }
 }
 
@@ -633,5 +657,47 @@ mod test {
             .render(&context, &template_registry, &formatter_registry)
             .unwrap();
         assert_eq!("1:< 2:> 3:& 4:' 5:\"", &string);
+    }
+
+    #[test]
+    fn test_root_print() {
+        let template =
+            compile("{ @root }");
+        let context = "Hello World!";
+        let context = ::serde_json::to_value(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
+        assert_eq!("Hello World!", &string);
+    }
+
+    #[test]
+    fn test_root_branch() {
+        let template =
+            compile("{{ if @root }}Hello World!{{ endif }}");
+        let context = true;
+        let context = ::serde_json::to_value(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
+        assert_eq!("Hello World!", &string);
+    }
+
+    #[test]
+    fn test_root_iterate() {
+        let template =
+            compile("{{ for a in @root }}{ a }{{ endfor }}");
+        let context = vec!["foo", "bar"];
+        let context = ::serde_json::to_value(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(&context, &template_registry, &formatter_registry)
+            .unwrap();
+        assert_eq!("foobar", &string);
     }
 }

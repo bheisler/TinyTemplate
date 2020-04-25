@@ -21,7 +21,7 @@ enum Block {
 }
 
 /// List of the known @-keywords so that we can error if the user spells them wrong.
-static KNOWN_KEYWORDS: [&str; 3] = ["@index", "@first", "@last"];
+static KNOWN_KEYWORDS: [&'static str; 4] = ["@index", "@first", "@last", "@root"];
 
 /// The TemplateCompiler struct is responsible for parsing a template string and generating bytecode
 /// instructions based on it. The parser is a simple hand-written pattern-matching parser with no

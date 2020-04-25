@@ -31,6 +31,10 @@
 //! ```text
 //! And hello to {friend.name} as well!
 //! ```
+//! 
+//! Additionally, you may use the `@root` keyword to refer to the root object of your context.
+//! Since TinyTemplate can't normally print complex context objects, this is only useful if the
+//! context is a simple object like an integer or string.
 //!
 //! ### Conditionals
 //!
@@ -59,6 +63,8 @@
 //! Happy Birthday!
 //! {{ endif }}
 //! ```
+//! 
+//! If desired, the `@root` keyword can be used to branch on the root context object.
 //!
 //! ### Loops
 //!
@@ -96,6 +102,9 @@
 //!
 //!
 //! In case of nested loops, these values refer to the innermost loop which contains them.
+//! 
+//! If the root context object is a list, the `@root` keyword can be used to iterate over the
+//! root object.
 //!
 //! ### With Blocks
 //!
