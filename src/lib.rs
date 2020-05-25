@@ -13,7 +13,7 @@
 //! * Rendering values - `{ myvalue }`
 //! * Conditionals - `{{ if foo }}Foo is true{{ else }}Foo is false{{ endif }}`
 //! * Loops - `{{ for value in row }}{value}{{ endfor }}`
-//! * Customizable value formatters `{{ value | my_formatter }}`
+//! * Customizable value formatters `{ value | my_formatter }`
 //! * Macros `{{ call my_template with foo }}`
 //!
 //! ## Restrictions

@@ -15,8 +15,9 @@
 //! Hello, {name}, how are you?
 //! ```
 //!
-//! Optionally, a value formatter may be provided. The value formatter must have been registered
-//! with the [`TinyTemplate.add_formatter`](../struct.TinyTemplate.html#method.add_formatter)
+//! Optionally, a value formatter may be provided. One formatter, "unescaped", is provided by
+//! default. Any other formatters must be registered with the
+//! [`TinyTemplate.add_formatter`](../struct.TinyTemplate.html#method.add_formatter)
 //! function prior to rendering or an error will be generated. This will call the formatter function
 //! registered as "percent_formatter" with the value of the "percentage" field:
 //!
