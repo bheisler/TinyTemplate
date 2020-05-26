@@ -743,7 +743,7 @@ mod test {
 
     #[test]
     fn test_unknown() {
-        let template = compile("{ default_formatter }");
+        let template = compile("{ foobar }");
         let context = context();
         let template_registry = other_templates();
         let formatter_registry = formatters();
