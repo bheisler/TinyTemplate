@@ -122,7 +122,7 @@ impl<'template> Template<'template> {
         context: &Value,
         template_registry: &HashMap<&str, Template>,
         formatter_registry: &HashMap<&str, Box<ValueFormatter>>,
-        default_formatter: &Box<ValueFormatter>,
+        default_formatter: &ValueFormatter,
     ) -> Result<String> {
         // The length of the original template seems like a reasonable guess at the length of the
         // output.
@@ -143,7 +143,7 @@ impl<'template> Template<'template> {
         context: &Value,
         template_registry: &HashMap<&str, Template>,
         formatter_registry: &HashMap<&str, Box<ValueFormatter>>,
-        default_formatter: &Box<ValueFormatter>,
+        default_formatter: &ValueFormatter,
         output: &mut String,
     ) -> Result<()> {
         let mut program_counter = 0;
@@ -393,8 +393,8 @@ mod test {
         map
     }
 
-    pub fn default_formatter() -> Box<ValueFormatter> {
-        Box::new(::format)
+    pub fn default_formatter() -> &'static ValueFormatter {
+        &::format
     }
 
     #[test]
