@@ -3,7 +3,6 @@
 use compiler::TemplateCompiler;
 use error::Error::*;
 use error::*;
-use format;
 use instruction::{Instruction, PathSlice};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -123,11 +122,18 @@ impl<'template> Template<'template> {
         context: &Value,
         template_registry: &HashMap<&str, Template>,
         formatter_registry: &HashMap<&str, Box<ValueFormatter>>,
+        default_formatter: &ValueFormatter,
     ) -> Result<String> {
         // The length of the original template seems like a reasonable guess at the length of the
         // output.
         let mut output = String::with_capacity(self.template_len);
-        self.render_into(context, template_registry, formatter_registry, &mut output)?;
+        self.render_into(
+            context,
+            template_registry,
+            formatter_registry,
+            default_formatter,
+            &mut output,
+        )?;
         Ok(output)
     }
 
@@ -137,6 +143,7 @@ impl<'template> Template<'template> {
         context: &Value,
         template_registry: &HashMap<&str, Template>,
         formatter_registry: &HashMap<&str, Box<ValueFormatter>>,
+        default_formatter: &ValueFormatter,
         output: &mut String,
     ) -> Result<()> {
         let mut program_counter = 0;
@@ -170,13 +177,13 @@ impl<'template> Template<'template> {
                             }
                             "@root" => {
                                 let value_to_render = render_context.lookup_root()?;
-                                format(value_to_render, output)?;
+                                default_formatter(value_to_render, output)?;
                             }
                             _ => panic!(), // This should have been caught by the parser.
                         }
                     } else {
                         let value_to_render = render_context.lookup(path)?;
-                        format(value_to_render, output)?;
+                        default_formatter(value_to_render, output)?;
                     }
                     program_counter += 1;
                 }
@@ -287,6 +294,7 @@ impl<'template> Template<'template> {
                                 context_value,
                                 template_registry,
                                 formatter_registry,
+                                default_formatter,
                                 output,
                             );
                             if let Err(err) = called_templ_result {
@@ -385,6 +393,10 @@ mod test {
         map
     }
 
+    pub fn default_formatter() -> &'static ValueFormatter {
+        &::format
+    }
+
     #[test]
     fn test_literal() {
         let template = compile("Hello!");
@@ -392,7 +404,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("Hello!", &string);
     }
@@ -404,7 +421,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("5", &string);
     }
@@ -416,7 +438,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("The number of the day is 10.", &string);
     }
@@ -428,7 +455,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("Hello!", &string);
     }
@@ -440,7 +472,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("", &string);
     }
@@ -452,7 +489,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("Hello!", &string);
     }
@@ -464,7 +506,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("Goodbye!", &string);
     }
@@ -476,7 +523,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("", &string);
     }
@@ -488,7 +540,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("Hello!", &string);
     }
@@ -500,7 +557,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("Goodbye!", &string);
     }
@@ -512,7 +574,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("Hello!", &string);
     }
@@ -526,7 +593,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("Hi, Hello!", &string);
     }
@@ -538,7 +610,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("10 5", &string);
     }
@@ -550,7 +627,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("123", &string);
     }
@@ -562,7 +644,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("012", &string);
     }
@@ -575,7 +662,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("0", &string);
     }
@@ -588,7 +680,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("2", &string);
     }
@@ -600,7 +697,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("151", &string);
     }
@@ -612,7 +714,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("10", &string);
     }
@@ -624,7 +731,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("{10}", &string);
     }
@@ -636,7 +748,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap_err();
     }
 
@@ -647,7 +764,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("1:&lt; 2:&gt; 3:&amp; 4:&#39; 5:&quot;", &string);
     }
@@ -660,7 +782,12 @@ mod test {
         let mut formatter_registry = formatters();
         formatter_registry.insert("unescaped", Box::new(::format_unescaped));
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("1:< 2:> 3:& 4:' 5:\"", &string);
     }
@@ -673,7 +800,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("Hello World!", &string);
     }
@@ -686,7 +818,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("Hello World!", &string);
     }
@@ -699,7 +836,12 @@ mod test {
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
-            .render(&context, &template_registry, &formatter_registry)
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
             .unwrap();
         assert_eq!("foobar", &string);
     }
