@@ -16,9 +16,7 @@ matrix:
   include:
     - os: linux
     - os: linux
-      rust: 1.33.0
-    - os: linux
-      rust: 1.38.0
+      rust: 1.36.0
     - os: linux
       env: RUSTFMT=yes
     - os: linux

@@ -106,7 +106,7 @@ This should print "Hello World!" to stdout.
 TinyTemplate supports the last three stable minor releases of Rust. At time of writing, this means
 Rust 1.38 or later. Older versions may work, but are not tested or guaranteed.
 
-Currently, the oldest version of Rust believed to work is 1.33. Future versions of TinyTemplate may
+Currently, the oldest version of Rust believed to work is 1.36. Future versions of TinyTemplate may
 break support for such old versions, and this will not be considered a breaking change. If you
 require TinyTemplate to work on old versions of Rust, you will need to stick to a
 specific patch version of TinyTemplate.
