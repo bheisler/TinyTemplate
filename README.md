@@ -63,7 +63,7 @@ First, add TinyTemplate and serde-derive to your `Cargo.toml` file:
 
 ```toml
 [dependencies]
-tinytemplate = "1.0"
+tinytemplate = "1.1"
 serde_derive = "1.0"
 ```
 
