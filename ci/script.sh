@@ -1,5 +1,7 @@
 set -ex
 
+export CARGO_INCREMENTAL=0
+
 if [ "$RUSTFMT" = "yes" ]; then
     cargo fmt --all -- --check
 elif [ "$CLIPPY" = "yes" ]; then
