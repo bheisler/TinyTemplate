@@ -14,6 +14,8 @@ jobs:
           - 1.36.0  # MSRV
 
     steps:
+      - uses: actions/checkout@v2
+
       - uses: actions/cache@v2
         with:
           path: |
@@ -21,8 +23,6 @@ jobs:
             ~/.cargo/git
             target
           key: ${{ runner.os }}-cargo-${{ matrix.rust }}-${{ hashFiles('**/Cargo.lock') }}
-
-      - uses: actions/checkout@v2
 
       - uses: actions-rs/toolchain@v1
         with:
