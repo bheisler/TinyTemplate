@@ -6,7 +6,7 @@
 /// template strings and generating the appropriate bytecode instructions.
 use error::Error::*;
 use error::{get_offset, Error, Result};
-use instruction::{Instruction, Path};
+use instruction::{Instruction, Path, PathStep};
 
 /// The end point of a branch or goto instruction is not known.
 const UNKNOWN: usize = ::std::usize::MAX;
@@ -185,9 +185,15 @@ impl<'template> TemplateCompiler<'template> {
     /// context.
     fn parse_path(&self, text: &'template str) -> Result<Path<'template>> {
         if !text.starts_with('@') {
-            Ok(text.split('.').collect::<Vec<_>>())
+            Ok(text
+                .split('.')
+                .map(|s| match s.parse::<usize>() {
+                    Ok(n) => PathStep::Index(s, n),
+                    Err(_) => PathStep::Name(s),
+                })
+                .collect::<Vec<_>>())
         } else if KNOWN_KEYWORDS.iter().any(|k| *k == text) {
-            Ok(vec![text])
+            Ok(vec![PathStep::Name(text)])
         } else {
             Err(self.parse_error(text, format!("Invalid keyword name '{}'", text)))
         }
@@ -432,7 +438,7 @@ mod test {
         let text = "{ foobar }";
         let instructions = compile(text).unwrap();
         assert_eq!(1, instructions.len());
-        assert_eq!(&Value(vec!["foobar"]), &instructions[0]);
+        assert_eq!(&Value(vec![PathStep::Name("foobar")]), &instructions[0]);
     }
 
     #[test]
@@ -441,7 +447,7 @@ mod test {
         let instructions = compile(text).unwrap();
         assert_eq!(1, instructions.len());
         assert_eq!(
-            &FormattedValue(vec!["foobar"], "my_formatter"),
+            &FormattedValue(vec![PathStep::Name("foobar")], "my_formatter"),
             &instructions[0]
         );
     }
@@ -451,7 +457,25 @@ mod test {
         let text = "{ foo.bar }";
         let instructions = compile(text).unwrap();
         assert_eq!(1, instructions.len());
-        assert_eq!(&Value(vec!["foo", "bar"]), &instructions[0]);
+        assert_eq!(
+            &Value(vec![PathStep::Name("foo"), PathStep::Name("bar")]),
+            &instructions[0]
+        );
+    }
+
+    #[test]
+    fn test_indexed_path() {
+        let text = "{ foo.0.bar }";
+        let instructions = compile(text).unwrap();
+        assert_eq!(1, instructions.len());
+        assert_eq!(
+            &Value(vec![
+                PathStep::Name("foo"),
+                PathStep::Index("0", 0),
+                PathStep::Name("bar")
+            ]),
+            &instructions[0]
+        );
     }
 
     #[test]
@@ -460,7 +484,7 @@ mod test {
         let instructions = compile(text).unwrap();
         assert_eq!(3, instructions.len());
         assert_eq!(&Literal("Hello "), &instructions[0]);
-        assert_eq!(&Value(vec!["name"]), &instructions[1]);
+        assert_eq!(&Value(vec![PathStep::Name("name")]), &instructions[1]);
         assert_eq!(&Literal(", how are you?"), &instructions[2]);
     }
 
@@ -469,7 +493,10 @@ mod test {
         let text = "{{ if foo }}Hello!{{ endif }}";
         let instructions = compile(text).unwrap();
         assert_eq!(2, instructions.len());
-        assert_eq!(&Branch(vec!["foo"], true, 2), &instructions[0]);
+        assert_eq!(
+            &Branch(vec![PathStep::Name("foo")], true, 2),
+            &instructions[0]
+        );
         assert_eq!(&Literal("Hello!"), &instructions[1]);
     }
 
@@ -478,7 +505,10 @@ mod test {
         let text = "{{ if not foo }}Hello!{{ endif }}";
         let instructions = compile(text).unwrap();
         assert_eq!(2, instructions.len());
-        assert_eq!(&Branch(vec!["foo"], false, 2), &instructions[0]);
+        assert_eq!(
+            &Branch(vec![PathStep::Name("foo")], false, 2),
+            &instructions[0]
+        );
         assert_eq!(&Literal("Hello!"), &instructions[1]);
     }
 
@@ -487,7 +517,10 @@ mod test {
         let text = "{{ if foo }}Hello!{{ else }}Goodbye!{{ endif }}";
         let instructions = compile(text).unwrap();
         assert_eq!(4, instructions.len());
-        assert_eq!(&Branch(vec!["foo"], true, 3), &instructions[0]);
+        assert_eq!(
+            &Branch(vec![PathStep::Name("foo")], true, 3),
+            &instructions[0]
+        );
         assert_eq!(&Literal("Hello!"), &instructions[1]);
         assert_eq!(&Goto(4), &instructions[2]);
         assert_eq!(&Literal("Goodbye!"), &instructions[3]);
@@ -498,7 +531,10 @@ mod test {
         let text = "{{ with foo as bar }}Hello!{{ endwith }}";
         let instructions = compile(text).unwrap();
         assert_eq!(3, instructions.len());
-        assert_eq!(&PushNamedContext(vec!["foo"], "bar"), &instructions[0]);
+        assert_eq!(
+            &PushNamedContext(vec![PathStep::Name("foo")], "bar"),
+            &instructions[0]
+        );
         assert_eq!(&Literal("Hello!"), &instructions[1]);
         assert_eq!(&PopContext, &instructions[2]);
     }
@@ -509,11 +545,11 @@ mod test {
         let instructions = compile(text).unwrap();
         assert_eq!(5, instructions.len());
         assert_eq!(
-            &PushIterationContext(vec!["bar", "baz"], "foo"),
+            &PushIterationContext(vec![PathStep::Name("bar"), PathStep::Name("baz")], "foo"),
             &instructions[0]
         );
         assert_eq!(&Iterate(4), &instructions[1]);
-        assert_eq!(&Value(vec!["foo"]), &instructions[2]);
+        assert_eq!(&Value(vec![PathStep::Name("foo")]), &instructions[2]);
         assert_eq!(&Goto(1), &instructions[3]);
         assert_eq!(&PopContext, &instructions[4]);
     }
@@ -524,7 +560,7 @@ mod test {
         let instructions = compile(text).unwrap();
         assert_eq!(3, instructions.len());
         assert_eq!(&Literal("Hello,"), &instructions[0]);
-        assert_eq!(&Value(vec!["name"]), &instructions[1]);
+        assert_eq!(&Value(vec![PathStep::Name("name")]), &instructions[1]);
         assert_eq!(&Literal(", how are you?"), &instructions[2]);
     }
 
@@ -534,9 +570,12 @@ mod test {
         let instructions = compile(text).unwrap();
         assert_eq!(6, instructions.len());
         assert_eq!(&Literal("Hello,"), &instructions[0]);
-        assert_eq!(&Branch(vec!["name"], true, 5), &instructions[1]);
+        assert_eq!(
+            &Branch(vec![PathStep::Name("name")], true, 5),
+            &instructions[1]
+        );
         assert_eq!(&Literal(""), &instructions[2]);
-        assert_eq!(&Value(vec!["name"]), &instructions[3]);
+        assert_eq!(&Value(vec![PathStep::Name("name")]), &instructions[3]);
         assert_eq!(&Literal(""), &instructions[4]);
         assert_eq!(&Literal(", how are you?"), &instructions[5]);
     }
@@ -564,8 +603,8 @@ mod test {
         let text = "{value -}{value} Hello";
         let instructions = compile(text).unwrap();
         assert_eq!(3, instructions.len());
-        assert_eq!(&Value(vec!["value"]), &instructions[0]);
-        assert_eq!(&Value(vec!["value"]), &instructions[1]);
+        assert_eq!(&Value(vec![PathStep::Name("value")]), &instructions[0]);
+        assert_eq!(&Value(vec![PathStep::Name("value")]), &instructions[1]);
         assert_eq!(&Literal(" Hello"), &instructions[2]);
     }
 
@@ -574,7 +613,13 @@ mod test {
         let text = "{{ call my_macro with foo.bar }}";
         let instructions = compile(text).unwrap();
         assert_eq!(1, instructions.len());
-        assert_eq!(&Call("my_macro", vec!["foo", "bar"]), &instructions[0]);
+        assert_eq!(
+            &Call(
+                "my_macro",
+                vec![PathStep::Name("foo"), PathStep::Name("bar")]
+            ),
+            &instructions[0]
+        );
     }
 
     #[test]
@@ -584,7 +629,7 @@ mod test {
         assert_eq!(4, instructions.len());
         assert_eq!(&Literal("body "), &instructions[0]);
         assert_eq!(&Literal("{ \nfont-size: "), &instructions[1]);
-        assert_eq!(&Value(vec!["fontsize"]), &instructions[2]);
+        assert_eq!(&Value(vec![PathStep::Name("fontsize")]), &instructions[2]);
         assert_eq!(&Literal(" \n}"), &instructions[3]);
     }
 

@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 /// TinyTemplate implements a simple bytecode interpreter for its template engine. Instructions
 /// for this interpreter are represented by the Instruction enum and typically contain various
 /// parameters such as the path to context values or name strings.
@@ -7,11 +9,28 @@
 /// slices from the template text. These string slices can then be appended directly to the output
 /// string.
 
+/// Enum for a step in a path which optionally contains a parsed index.
+#[derive(Eq, PartialEq, Debug, Clone)]
+pub(crate) enum PathStep<'template> {
+    Name(&'template str),
+    Index(&'template str, usize),
+}
+impl<'template> Deref for PathStep<'template> {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            PathStep::Name(s) => s,
+            PathStep::Index(s, _) => s,
+        }
+    }
+}
+
 /// Sequence of named steps used for looking up values in the context
-pub(crate) type Path<'template> = Vec<&'template str>;
+pub(crate) type Path<'template> = Vec<PathStep<'template>>;
 
 /// Path, but as a slice.
-pub(crate) type PathSlice<'a, 'template> = &'a [&'template str];
+pub(crate) type PathSlice<'a, 'template> = &'a [PathStep<'template>];
 
 /// Enum representing the bytecode instructions.
 #[derive(Eq, PartialEq, Debug, Clone)]

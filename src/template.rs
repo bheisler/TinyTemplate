@@ -3,7 +3,7 @@
 use compiler::TemplateCompiler;
 use error::Error::*;
 use error::*;
-use instruction::{Instruction, PathSlice};
+use instruction::{Instruction, PathSlice, PathStep};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -44,12 +44,12 @@ impl<'render, 'template> RenderContext<'render, 'template> {
             match stack_layer {
                 ContextElement::Object(obj) => return self.lookup_in(path, obj),
                 ContextElement::Named(name, obj) => {
-                    if *name == path[0] {
+                    if *name == &*path[0] {
                         return self.lookup_in(&path[1..], obj);
                     }
                 }
                 ContextElement::Iteration(name, obj, _, _, _) => {
-                    if *name == path[0] {
+                    if *name == &*path[0] {
                         return self.lookup_in(&path[1..], obj);
                     }
                 }
@@ -63,6 +63,15 @@ impl<'render, 'template> RenderContext<'render, 'template> {
     fn lookup_in(&self, path: PathSlice, object: &'render Value) -> Result<&'render Value> {
         let mut current = object;
         for step in path.iter() {
+            if let PathStep::Index(_, n) = step {
+                if let Some(next) = current.get(n) {
+                    current = next;
+                    continue;
+                }
+            }
+
+            let step: &str = &*step;
+
             match current.get(step) {
                 Some(next) => current = next,
                 None => return Err(lookup_error(self.original_text, step, path, current)),
@@ -159,11 +168,12 @@ impl<'template> Template<'template> {
                     program_counter += 1;
                 }
                 Instruction::Value(path) => {
-                    let first = *path.first().unwrap();
+                    let first = path.first().unwrap();
                     if first.starts_with('@') {
                         // Currently we just hard-code the special @-keywords and have special
                         // lookup functions to use them because there are lifetime complexities with
                         // looking up values that don't live for as long as the given context object.
+                        let first: &str = &*first;
                         match first {
                             "@index" => {
                                 write!(output, "{}", render_context.lookup_index()?.0).unwrap()
@@ -202,9 +212,10 @@ impl<'template> Template<'template> {
                     program_counter += 1;
                 }
                 Instruction::Branch(path, negate, target) => {
-                    let first = *path.first().unwrap();
+                    let first = path.first().unwrap();
                     let mut truthy = if first.starts_with('@') {
-                        match first {
+                        let first: &str = &*first;
+                        match &*first {
                             "@index" => render_context.lookup_index()?.0 != 0,
                             "@first" => render_context.lookup_index()?.0 == 0,
                             "@last" => {
@@ -238,10 +249,10 @@ impl<'template> Template<'template> {
                 Instruction::PushIterationContext(path, name) => {
                     // We push a context with an invalid index and no value and then wait for the
                     // following Iterate instruction to set the index and value properly.
-                    let first = *path.first().unwrap();
+                    let first = path.first().unwrap();
                     let context_value = match first {
-                        "@root" => render_context.lookup_root()?,
-                        other if other.starts_with('@') => {
+                        PathStep::Name("@root") => render_context.lookup_root()?,
+                        PathStep::Name(other) if other.starts_with('@') => {
                             return Err(not_iterable_error(self.original_text, path))
                         }
                         _ => render_context.lookup(path)?,
@@ -314,7 +325,7 @@ impl<'template> Template<'template> {
         Ok(())
     }
 
-    fn value_is_truthy(&self, value: &Value, path: &[&str]) -> Result<bool> {
+    fn value_is_truthy(&self, value: &Value, path: PathSlice) -> Result<bool> {
         let truthy = match value {
             Value::Null => false,
             Value::Bool(b) => *b,
@@ -880,5 +891,54 @@ mod test {
             )
             .unwrap();
         assert_eq!("truthy", &string);
+    }
+
+    #[test]
+    fn test_indexed_paths() {
+        #[derive(Serialize)]
+        struct Context {
+            foo: (usize, usize),
+        }
+
+        let template = compile("{ foo.1 }{ foo.0 }");
+        let context = Context { foo: (123, 456) };
+        let context = ::serde_json::to_value(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
+            .unwrap();
+        assert_eq!("456123", &string);
+    }
+
+    #[test]
+    fn test_indexed_paths_fall_back_to_string_lookup() {
+        #[derive(Serialize)]
+        struct Context {
+            foo: HashMap<&'static str, usize>,
+        }
+
+        let template = compile("{ foo.1 }{ foo.0 }");
+        let mut foo = HashMap::new();
+        foo.insert("0", 123);
+        foo.insert("1", 456);
+        let context = Context { foo };
+        let context = ::serde_json::to_value(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
+            .unwrap();
+        assert_eq!("123", &string);
     }
 }
