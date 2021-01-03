@@ -64,15 +64,13 @@ First, add TinyTemplate and serde-derive to your `Cargo.toml` file:
 ```toml
 [dependencies]
 tinytemplate = "1.1"
-serde_derive = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 ```
 
 Then add this code to "src.rs":
 
 ```rust
-#[macro_use]
-extern crate serde_derive;
-extern crate tinytemplate;
+use serde::Serialize;
 
 use tinytemplate::TinyTemplate;
 use std::error::Error;
