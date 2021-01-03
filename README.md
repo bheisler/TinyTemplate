@@ -9,9 +9,7 @@
 </div>
 
 <div align="center">
-	<a href="https://travis-ci.org/bheisler/TinyTemplate">
-        <img src="https://travis-ci.org/bheisler/TinyTemplate.svg?branch=master" alt="Travis-CI">
-    </a>
+    ![Continuous integration](https://github.com/bheisler/TinyTemplate/workflows/Continuous%20integration/badge.svg)
     |
     <a href="https://crates.io/crates/tinytemplate">
         <img src="https://img.shields.io/crates/v/tinytemplate.svg" alt=Crates.io">
