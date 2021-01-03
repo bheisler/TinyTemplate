@@ -939,6 +939,6 @@ mod test {
                 &default_formatter(),
             )
             .unwrap();
-        assert_eq!("123", &string);
+        assert_eq!("456123", &string);
     }
 }
