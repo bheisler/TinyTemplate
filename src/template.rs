@@ -845,4 +845,40 @@ mod test {
             .unwrap();
         assert_eq!("foobar", &string);
     }
+
+    #[test]
+    fn test_number_truthiness_zero() {
+        let template = compile("{{ if @root }}truthy{{else}}not truthy{{ endif }}");
+        let context = 0;
+        let context = ::serde_json::to_value(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
+            .unwrap();
+        assert_eq!("not truthy", &string);
+    }
+
+    #[test]
+    fn test_number_truthiness_one() {
+        let template = compile("{{ if @root }}truthy{{else}}not truthy{{ endif }}");
+        let context = 1;
+        let context = ::serde_json::to_value(&context).unwrap();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
+            .unwrap();
+        assert_eq!("truthy", &string);
+    }
 }
