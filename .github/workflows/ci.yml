@@ -24,5 +24,9 @@ jobs:
           components: rustfmt, clippy
 
       - run: cargo test
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --all -- -D warnings
+
+      - if: ${{ matrix.rust == "stable" }}
+        run: cargo fmt --all -- --check
+        
+      - if: ${{ matrix.rust == "stable" }}
+        run: cargo clippy --all -- -D warnings
