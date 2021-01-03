@@ -9,10 +9,11 @@
 </div>
 
 <div align="center">
-    ![Continuous integration](https://github.com/bheisler/TinyTemplate/workflows/Continuous%20integration/badge.svg)
-    |
+    <a href="https://github.com/bheisler/TinyTemplate/actions">
+        <img src="https://github.com/bheisler/TinyTemplate/workflows/Continuous%20integration/badge.svg" alt="Continuous integration">
+    </a>
     <a href="https://crates.io/crates/tinytemplate">
-        <img src="https://img.shields.io/crates/v/tinytemplate.svg" alt=Crates.io">
+        <img src="https://img.shields.io/crates/v/tinytemplate.svg" alt="Crates.io">
     </a>
 </div>
 
