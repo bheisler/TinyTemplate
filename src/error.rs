@@ -41,7 +41,7 @@ pub enum Error {
         column: usize,
     },
 
-    #[doc(Hidden)]
+    #[doc(hidden)]
     __NonExhaustive,
 }
 impl From<SerdeJsonError> for Error {
