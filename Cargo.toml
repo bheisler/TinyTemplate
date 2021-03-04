@@ -1,6 +1,6 @@
 [package]
 name = "tinytemplate"
-version = "1.2.0"
+version = "1.2.1"
 authors = ["Brook Heisler <brookheisler@gmail.com>"]
 
 description = "Simple, lightweight template engine"

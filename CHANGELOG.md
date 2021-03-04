@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [1.2.1] - 2021-03-03
+### Fixed
+- Fixed a compile error on some nightly compiler versions.
+
 ## [1.2.0] - 2020-01-03
 ### Fixed
  - Fixed numeric values being truthy when zero, rather than when non-zero. (For real this time)
@@ -43,4 +47,5 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 [1.0.3]: https://github.com/bheisler/TinyTemplate/compare/1.0.2...1.0.3
 [1.0.4]: https://github.com/bheisler/TinyTemplate/compare/1.0.3...1.0.4
 [1.1.0]: https://github.com/bheisler/TinyTemplate/compare/1.0.4...1.1.0
-[1.1.0]: https://github.com/bheisler/TinyTemplate/compare/1.1.0...1.2.0
+[1.2.0]: https://github.com/bheisler/TinyTemplate/compare/1.1.0...1.2.0
+[1.2.1]: https://github.com/bheisler/TinyTemplate/compare/1.2.0...1.2.1
