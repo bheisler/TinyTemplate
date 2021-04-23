@@ -198,16 +198,42 @@ impl<'template> Template<'template> {
                     program_counter += 1;
                 }
                 Instruction::FormattedValue(path, name) => {
-                    // The @ keywords aren't supported for formatted values. Should they be?
-                    let value_to_render = render_context.lookup(path)?;
-                    match formatter_registry.get(name) {
-                        Some(formatter) => {
-                            let formatter_result = formatter(value_to_render, output);
-                            if let Err(err) = formatter_result {
-                                return Err(called_formatter_error(self.original_text, name, err));
-                            }
-                        }
+                    let formatter = match formatter_registry.get(name) {
+                        Some(formatter) => formatter,
                         None => return Err(unknown_formatter(self.original_text, name)),
+                    };
+                    let first = path.first().unwrap();
+                    let formatter_result = if first.starts_with('@') {
+                        // Same as above, functions are hardcoded.
+                        let first: &str = &*first;
+                        match first {
+                            "@index" => {
+                                let value_to_render =
+                                    Value::Number(render_context.lookup_index()?.0.into());
+                                formatter(&value_to_render, output)
+                            }
+                            "@first" => {
+                                let value_to_render =
+                                    Value::Bool(render_context.lookup_index()?.0 == 0);
+                                formatter(&value_to_render, output)
+                            }
+                            "@last" => {
+                                let (index, length) = render_context.lookup_index()?;
+                                let value_to_render = Value::Bool(index == length - 1);
+                                formatter(&value_to_render, output)
+                            }
+                            "@root" => {
+                                let value_to_render = render_context.lookup_root()?;
+                                formatter(value_to_render, output)
+                            }
+                            _ => panic!(), // This should have been caught by the parser.
+                        }
+                    } else {
+                        let value_to_render = render_context.lookup(path)?;
+                        formatter(value_to_render, output)
+                    };
+                    if let Err(err) = formatter_result {
+                        return Err(called_formatter_error(self.original_text, name, err));
                     }
                     program_counter += 1;
                 }
@@ -699,6 +725,23 @@ mod test {
             )
             .unwrap();
         assert_eq!("2", &string);
+    }
+
+    #[test]
+    fn test_for_loop_index_formatted() {
+        let template = compile("{{ for a in array }}{ @index | my_formatter }{{ endfor }}");
+        let context = context();
+        let template_registry = other_templates();
+        let formatter_registry = formatters();
+        let string = template
+            .render(
+                &context,
+                &template_registry,
+                &formatter_registry,
+                &default_formatter(),
+            )
+            .unwrap();
+        assert_eq!("{0}{1}{2}", &string);
     }
 
     #[test]
