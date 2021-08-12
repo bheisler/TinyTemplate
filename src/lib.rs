@@ -63,7 +63,6 @@
 //!
 
 extern crate serde;
-extern crate serde_json;
 
 #[cfg(test)]
 #[cfg_attr(test, macro_use)]
@@ -74,13 +73,14 @@ pub mod error;
 mod instruction;
 pub mod syntax;
 mod template;
+mod value;
 
 use error::*;
 use serde::Serialize;
-use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Write;
 use template::Template;
+use value::Value;
 
 /// Type alias for closures which can be used as value formatters.
 pub type ValueFormatter = dyn Fn(&Value, &mut String) -> Result<()>;
@@ -119,20 +119,25 @@ pub fn escape(value: &str, output: &mut String) {
 /// Values are formatted as follows:
 ///
 /// * `Value::Null` => the empty string
-/// * `Value::Bool` => true|false
-/// * `Value::Number` => the number, as formatted by `serde_json`.
+/// * `Value::Boolean` => true|false
+/// * `Value::Integer` => the integer
+/// * `Value::Float` => the float
 /// * `Value::String` => the string, HTML-escaped
 ///
 /// Arrays and objects are not formatted, and attempting to do so will result in a rendering error.
 pub fn format(value: &Value, output: &mut String) -> Result<()> {
     match value {
         Value::Null => Ok(()),
-        Value::Bool(b) => {
+        Value::Boolean(b) => {
             write!(output, "{}", b)?;
             Ok(())
         }
-        Value::Number(n) => {
-            write!(output, "{}", n)?;
+        Value::Integer(i) => {
+            write!(output, "{}", i)?;
+            Ok(())
+        }
+        Value::Float(f) => {
+            write!(output, "{}", f)?;
             Ok(())
         }
         Value::String(s) => {
@@ -147,12 +152,16 @@ pub fn format(value: &Value, output: &mut String) -> Result<()> {
 pub fn format_unescaped(value: &Value, output: &mut String) -> Result<()> {
     match value {
         Value::Null => Ok(()),
-        Value::Bool(b) => {
+        Value::Boolean(b) => {
             write!(output, "{}", b)?;
             Ok(())
         }
-        Value::Number(n) => {
-            write!(output, "{}", n)?;
+        Value::Integer(i) => {
+            write!(output, "{}", i)?;
+            Ok(())
+        }
+        Value::Float(f) => {
+            write!(output, "{}", f)?;
             Ok(())
         }
         Value::String(s) => {
@@ -208,12 +217,12 @@ impl<'template> TinyTemplate<'template> {
     }
 
     /// Render the template with the given name using the given context object. The context
-    /// object must implement `serde::Serialize` as it will be converted to `serde_json::Value`.
+    /// object must implement `serde::Serialize`.
     pub fn render<C>(&self, template: &str, context: &C) -> Result<String>
     where
         C: Serialize,
     {
-        let value = serde_json::to_value(context)?;
+        let value = Value::serialize_from(context)?;
         match self.templates.get(template) {
             Some(tmpl) => tmpl.render(
                 &value,

@@ -1,10 +1,14 @@
 //! Module containing the error type returned by TinyTemplate if an error occurs.
 
 use instruction::{path_to_str, PathSlice};
-use serde_json::Error as SerdeJsonError;
-use serde_json::Value;
+use value::Value;
+
 use std::error::Error as StdError;
 use std::fmt;
+
+/// An opaque type representing a serialization error.
+#[derive(Debug)]
+pub struct SerializationError(super::value::Error);
 
 /// Enum representing the potential errors that TinyTemplate can encounter.
 #[derive(Debug)]
@@ -20,9 +24,7 @@ pub enum Error {
         line: usize,
         column: usize,
     },
-    SerdeError {
-        err: SerdeJsonError,
-    },
+    SerializationError(SerializationError),
     GenericError {
         msg: String,
     },
@@ -42,9 +44,9 @@ pub enum Error {
         column: usize,
     },
 }
-impl From<SerdeJsonError> for Error {
-    fn from(err: SerdeJsonError) -> Error {
-        Error::SerdeError { err }
+impl From<super::value::Error> for Error {
+    fn from(err: super::value::Error) -> Error {
+        Error::SerializationError(SerializationError(err))
     }
 }
 impl From<fmt::Error> for Error {
@@ -67,8 +69,8 @@ impl fmt::Display for Error {
                     line, column, msg
                 )
             }
-            Error::SerdeError { err } => {
-                write!(f, "Unexpected serde error while converting the context to a serde_json::Value. Error: {}", err)
+            Error::SerializationError(err) => {
+                write!(f, "Unexpected error during serialization. Error: {}", err.0)
             }
             Error::GenericError { msg } => {
                 write!(f, "{}", msg)
@@ -108,7 +110,7 @@ impl StdError for Error {
         match self {
             Error::ParseError { .. } => "ParseError",
             Error::RenderError { .. } => "RenderError",
-            Error::SerdeError { .. } => "SerdeError",
+            Error::SerializationError { .. } => "SerializationError",
             Error::GenericError { msg } => msg,
             Error::StdFormatError { .. } => "StdFormatError",
             Error::CalledTemplateError { .. } => "CalledTemplateError",
@@ -143,18 +145,6 @@ pub(crate) fn lookup_error(source: &str, step: &str, path: PathSlice, current: &
             step,
             path_to_str(path),
             avail_str
-        ),
-        line,
-        column,
-    }
-}
-
-pub(crate) fn truthiness_error(source: &str, path: PathSlice) -> Error {
-    let (line, column) = get_offset(source, path.last().unwrap());
-    Error::RenderError {
-        msg: format!(
-            "Path '{}' produced a value which could not be checked for truthiness.",
-            path_to_str(path)
         ),
         line,
         column,

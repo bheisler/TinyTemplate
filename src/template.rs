@@ -4,10 +4,10 @@ use compiler::TemplateCompiler;
 use error::Error::*;
 use error::*;
 use instruction::{Instruction, PathSlice, PathStep};
-use serde_json::Value;
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::slice;
+use value::Value;
 use ValueFormatter;
 
 /// Enum defining the different kinds of records on the context stack.
@@ -64,17 +64,23 @@ impl<'render, 'template> RenderContext<'render, 'template> {
         let mut current = object;
         for step in path.iter() {
             if let PathStep::Index(_, n) = step {
-                if let Some(next) = current.get(n) {
-                    current = next;
-                    continue;
+                if let Value::Array(array) = current {
+                    if let Some(next) = array.get(*n) {
+                        current = next;
+                        continue;
+                    }
                 }
             }
 
             let step: &str = &*step;
 
-            match current.get(step) {
-                Some(next) => current = next,
-                None => return Err(lookup_error(self.original_text, step, path, current)),
+            match &current {
+                Value::Object(map) => match map.get(step) {
+                    Some(next) => current = next,
+                    None => return Err(lookup_error(self.original_text, step, path, current)),
+                },
+
+                _ => return Err(lookup_error(self.original_text, step, path, current)),
             }
         }
         Ok(current)
@@ -222,12 +228,12 @@ impl<'template> Template<'template> {
                                 let (index, length) = render_context.lookup_index()?;
                                 index == (length - 1)
                             }
-                            "@root" => self.value_is_truthy(render_context.lookup_root()?, path)?,
+                            "@root" => self.value_is_truthy(render_context.lookup_root()?),
                             other => panic!("Unknown keyword {}", other), // This should have been caught by the parser.
                         }
                     } else {
                         let value_to_render = render_context.lookup(path)?;
-                        self.value_is_truthy(value_to_render, path)?
+                        self.value_is_truthy(value_to_render)
                     };
                     if *negate {
                         truthy = !truthy;
@@ -325,21 +331,16 @@ impl<'template> Template<'template> {
         Ok(())
     }
 
-    fn value_is_truthy(&self, value: &Value, path: PathSlice) -> Result<bool> {
-        let truthy = match value {
+    fn value_is_truthy(&self, value: &Value) -> bool {
+        match value {
             Value::Null => false,
-            Value::Bool(b) => *b,
-            Value::Number(n) => match n.as_f64() {
-                Some(float) => float != 0.0,
-                None => {
-                    return Err(truthiness_error(self.original_text, path));
-                }
-            },
+            Value::Boolean(b) => *b,
+            Value::Integer(i) => *i != 0,
+            Value::Float(f) => *f != 0.0,
             Value::String(s) => !s.is_empty(),
             Value::Array(arr) => !arr.is_empty(),
             Value::Object(_) => true,
-        };
-        Ok(truthy)
+        }
     }
 }
 
@@ -382,7 +383,8 @@ mod test {
             nested: NestedContext { value: 10 },
             escapes: "1:< 2:> 3:& 4:' 5:\"",
         };
-        ::serde_json::to_value(&ctx).unwrap()
+
+        Value::serialize_from(&ctx).unwrap()
     }
 
     fn other_templates() -> HashMap<&'static str, Template<'static>> {
@@ -807,7 +809,7 @@ mod test {
     fn test_root_print() {
         let template = compile("{ @root }");
         let context = "Hello World!";
-        let context = ::serde_json::to_value(&context).unwrap();
+        let context = Value::serialize_from(&context).unwrap();
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
@@ -825,7 +827,7 @@ mod test {
     fn test_root_branch() {
         let template = compile("{{ if @root }}Hello World!{{ endif }}");
         let context = true;
-        let context = ::serde_json::to_value(&context).unwrap();
+        let context = Value::serialize_from(&context).unwrap();
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
@@ -843,7 +845,7 @@ mod test {
     fn test_root_iterate() {
         let template = compile("{{ for a in @root }}{ a }{{ endfor }}");
         let context = vec!["foo", "bar"];
-        let context = ::serde_json::to_value(&context).unwrap();
+        let context = Value::serialize_from(&context).unwrap();
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
@@ -861,7 +863,7 @@ mod test {
     fn test_number_truthiness_zero() {
         let template = compile("{{ if @root }}truthy{{else}}not truthy{{ endif }}");
         let context = 0;
-        let context = ::serde_json::to_value(&context).unwrap();
+        let context = Value::serialize_from(&context).unwrap();
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
@@ -879,7 +881,7 @@ mod test {
     fn test_number_truthiness_one() {
         let template = compile("{{ if @root }}truthy{{else}}not truthy{{ endif }}");
         let context = 1;
-        let context = ::serde_json::to_value(&context).unwrap();
+        let context = Value::serialize_from(&context).unwrap();
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
@@ -902,7 +904,7 @@ mod test {
 
         let template = compile("{ foo.1 }{ foo.0 }");
         let context = Context { foo: (123, 456) };
-        let context = ::serde_json::to_value(&context).unwrap();
+        let context = Value::serialize_from(&context).unwrap();
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template
@@ -928,7 +930,7 @@ mod test {
         foo.insert("0", 123);
         foo.insert("1", 456);
         let context = Context { foo };
-        let context = ::serde_json::to_value(&context).unwrap();
+        let context = Value::serialize_from(&context).unwrap();
         let template_registry = other_templates();
         let formatter_registry = formatters();
         let string = template

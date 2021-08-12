@@ -2,9 +2,9 @@
 //!
 //! ### Context Types
 //!
-//! TinyTemplate uses `serde_json`'s Value structure to represent the context. Therefore, any
+//! TinyTemplate uses a internal `Value` structure to represent the context. Therefore, any
 //! `Serializable` structure can be used as a context. All values in such structures are mapped to
-//! their JSON representations - booleans, numbers, strings, arrays, objects and nulls.
+//! representations similar to JSON - booleans, integers, floats, strings, arrays, objects and nulls.
 //!
 //! ### Values
 //!
