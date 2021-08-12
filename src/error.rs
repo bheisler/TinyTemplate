@@ -109,7 +109,7 @@ impl StdError for Error {
             Error::ParseError { .. } => "ParseError",
             Error::RenderError { .. } => "RenderError",
             Error::SerdeError { .. } => "SerdeError",
-            Error::GenericError { msg } => &msg,
+            Error::GenericError { msg } => msg,
             Error::StdFormatError { .. } => "StdFormatError",
             Error::CalledTemplateError { .. } => "CalledTemplateError",
             Error::CalledFormatterError { .. } => "CalledFormatterError",
