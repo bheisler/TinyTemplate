@@ -8,6 +8,7 @@ use std::fmt;
 
 /// Enum representing the potential errors that TinyTemplate can encounter.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum Error {
     ParseError {
         msg: String,
@@ -40,9 +41,6 @@ pub enum Error {
         line: usize,
         column: usize,
     },
-
-    #[doc(hidden)]
-    __NonExhaustive,
 }
 impl From<SerdeJsonError> for Error {
     fn from(err: SerdeJsonError) -> Error {
@@ -102,7 +100,6 @@ impl fmt::Display for Error {
                     name, line, column, err
                 )
             }
-            Error::__NonExhaustive => unreachable!(),
         }
     }
 }
@@ -116,7 +113,6 @@ impl StdError for Error {
             Error::StdFormatError { .. } => "StdFormatError",
             Error::CalledTemplateError { .. } => "CalledTemplateError",
             Error::CalledFormatterError { .. } => "CalledFormatterError",
-            Error::__NonExhaustive => unreachable!(),
         }
     }
 }
