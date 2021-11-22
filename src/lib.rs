@@ -85,6 +85,8 @@ use template::Template;
 /// Type alias for closures which can be used as value formatters.
 pub type ValueFormatter = dyn Fn(&Value, &mut String) -> Result<()>;
 
+pub use compiler::Delimiter;
+
 /// Appends `value` to `output`, performing HTML-escaping in the process.
 pub fn escape(value: &str, output: &mut String) {
     // Algorithm taken from the rustdoc source code.
@@ -170,6 +172,7 @@ pub struct TinyTemplate<'template> {
     templates: HashMap<&'template str, Template<'template>>,
     formatters: HashMap<&'template str, Box<ValueFormatter>>,
     default_formatter: &'template ValueFormatter,
+    delimiter: Delimiter,
 }
 impl<'template> TinyTemplate<'template> {
     /// Create a new TinyTemplate registry. The returned registry contains no templates, and has
@@ -179,6 +182,7 @@ impl<'template> TinyTemplate<'template> {
             templates: HashMap::default(),
             formatters: HashMap::default(),
             default_formatter: &format,
+            delimiter: Default::default(),
         };
         tt.add_formatter("unescaped", format_unescaped);
         tt
@@ -186,7 +190,7 @@ impl<'template> TinyTemplate<'template> {
 
     /// Parse and compile the given template, then register it under the given name.
     pub fn add_template(&mut self, name: &'template str, text: &'template str) -> Result<()> {
-        let template = Template::compile(text)?;
+        let template = Template::compile_with_delimiter(text, self.delimiter.clone())?;
         self.templates.insert(name, template);
         Ok(())
     }
@@ -205,6 +209,10 @@ impl<'template> TinyTemplate<'template> {
         F: 'static + Fn(&Value, &mut String) -> Result<()>,
     {
         self.formatters.insert(name, Box::new(formatter));
+    }
+
+    pub fn set_delimiter(&mut self, delimiter: Delimiter) {
+        self.delimiter = delimiter;
     }
 
     /// Render the template with the given name using the given context object. The context

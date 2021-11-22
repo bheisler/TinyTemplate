@@ -10,6 +10,8 @@ use std::fmt::Write;
 use std::slice;
 use ValueFormatter;
 
+use crate::compiler::Delimiter;
+
 /// Enum defining the different kinds of records on the context stack.
 enum ContextElement<'render, 'template> {
     /// Object contexts shadow everything below them on the stack, because every name is looked up
@@ -116,12 +118,12 @@ pub(crate) struct Template<'template> {
     template_len: usize,
 }
 impl<'template> Template<'template> {
-    /// Create a Template from the given template string.
-    pub fn compile(text: &'template str) -> Result<Template> {
+    /// Create a Template with delimiter from the given template string.
+    pub fn compile_with_delimiter(text: &'template str, delimiter: Delimiter) -> Result<Template> {
         Ok(Template {
             original_text: text,
             template_len: text.len(),
-            instructions: TemplateCompiler::new(text).compile()?,
+            instructions: TemplateCompiler::with_delimiter(text, delimiter).compile()?,
         })
     }
 

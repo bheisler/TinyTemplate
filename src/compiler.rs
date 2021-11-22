@@ -31,6 +31,8 @@ pub(crate) struct TemplateCompiler<'template> {
     remaining_text: &'template str,
     instructions: Vec<Instruction<'template>>,
     block_stack: Vec<(&'template str, Block)>,
+    delimiter: Delimiter,
+    delimiter_prefix: [char; 3],
 
     /// When we see a `{foo -}` or similar, we need to remember to left-trim the next text block we
     /// encounter.
@@ -38,12 +40,24 @@ pub(crate) struct TemplateCompiler<'template> {
 }
 impl<'template> TemplateCompiler<'template> {
     /// Create a new template compiler to parse and compile the given template.
+    #[cfg(test)]
     pub fn new(text: &'template str) -> TemplateCompiler<'template> {
+        Self::with_delimiter(text, Delimiter::default())
+    }
+
+    /// Create a new template compiler with delimiter to parse and compile the given template.
+    pub fn with_delimiter(text: &'template str, delimiter: Delimiter) -> Self {
         TemplateCompiler {
             original_text: text,
             remaining_text: text,
             instructions: vec![],
             block_stack: vec![],
+            delimiter_prefix: [
+                delimiter.comment_start.chars().next().expect("Delimiter prefix must not be empty"),
+                delimiter.block_start.chars().next().expect("Delimiter prefix must not be empty"),
+                delimiter.value_start.chars().next().expect("Delimiter prefix must not be empty"),
+            ],
+            delimiter,
             trim_next: false,
         }
     }
@@ -52,11 +66,11 @@ impl<'template> TemplateCompiler<'template> {
     pub fn compile(mut self) -> Result<Vec<Instruction<'template>>> {
         while !self.remaining_text.is_empty() {
             // Comment, denoted by {# comment text #}
-            if self.remaining_text.starts_with("{#") {
+            if self.remaining_text.starts_with(self.delimiter.comment_start) {
                 self.trim_next = false;
 
-                let tag = self.consume_tag("#}")?;
-                let comment = tag[2..(tag.len() - 2)].trim();
+                let tag = self.consume_tag(self.delimiter.comment_end)?;
+                let comment = tag[self.delimiter.comment_start.len()..(tag.len() - self.delimiter.comment_end.len())].trim();
                 if comment.starts_with('-') {
                     self.trim_last_whitespace();
                 }
@@ -65,7 +79,7 @@ impl<'template> TemplateCompiler<'template> {
                 }
             // Block tag. Block tags are wrapped in {{ }} and always have one word at the start
             // to identify which kind of tag it is. Depending on the tag type there may be more.
-            } else if self.remaining_text.starts_with("{{") {
+            } else if self.remaining_text.starts_with(self.delimiter.block_start) {
                 self.trim_next = false;
 
                 let (discriminant, rest) = self.consume_block()?;
@@ -140,7 +154,7 @@ impl<'template> TemplateCompiler<'template> {
             // Values, of the form { dotted.path.to.value.in.context }
             // Note that it is not (currently) possible to escape curly braces in the templates to
             // prevent them from being interpreted as values.
-            } else if self.remaining_text.starts_with('{') {
+            } else if self.remaining_text.starts_with(self.delimiter.value_start) {
                 self.trim_next = false;
 
                 let (path, name) = self.consume_value()?;
@@ -273,7 +287,7 @@ impl<'template> TemplateCompiler<'template> {
         };
 
         let mut position = search_substr
-            .find('{')
+            .find(|chr| self.delimiter_prefix.contains(&chr))
             .unwrap_or_else(|| search_substr.len());
         if escaped {
             position += 1;
@@ -287,8 +301,8 @@ impl<'template> TemplateCompiler<'template> {
     /// Advance the cursor to the end of the value tag and return the value's path and optional
     /// formatter name.
     fn consume_value(&mut self) -> Result<(Path<'template>, Option<&'template str>)> {
-        let tag = self.consume_tag("}")?;
-        let mut tag = tag[1..(tag.len() - 1)].trim();
+        let tag = self.consume_tag(self.delimiter.value_end)?;
+        let mut tag = tag[self.delimiter.value_start.len()..(tag.len() - self.delimiter.value_end.len())].trim();
         if tag.starts_with('-') {
             tag = tag[1..].trim();
             self.trim_last_whitespace();
@@ -323,8 +337,8 @@ impl<'template> TemplateCompiler<'template> {
     /// Advance the cursor to the end of the current block tag and return the discriminant substring
     /// and the rest of the text in the tag. Also handles trimming whitespace where needed.
     fn consume_block(&mut self) -> Result<(&'template str, &'template str)> {
-        let tag = self.consume_tag("}}")?;
-        let mut block = tag[2..(tag.len() - 2)].trim();
+        let tag = self.consume_tag(self.delimiter.block_end)?;
+        let mut block = tag[self.delimiter.block_start.len()..(tag.len() - self.delimiter.block_end.len())].trim();
         if block.starts_with('-') {
             block = block[1..].trim();
             self.trim_last_whitespace();
@@ -416,6 +430,29 @@ impl<'template> TemplateCompiler<'template> {
     }
 }
 
+#[derive(Clone)]
+pub struct Delimiter {
+    pub comment_start: &'static str,
+    pub comment_end: &'static str,
+    pub block_start: &'static str,
+    pub block_end: &'static str,
+    pub value_start: &'static str,
+    pub value_end: &'static str,
+}
+
+impl Default for Delimiter {
+    fn default() -> Self {
+        Self {
+            comment_start: "{#",
+            comment_end: "#}",
+            block_start: "{{",
+            block_end: "}}",
+            value_start: "{",
+            value_end: "}",
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -437,6 +474,18 @@ mod test {
     fn test_compile_value() {
         let text = "{ foobar }";
         let instructions = compile(text).unwrap();
+        assert_eq!(1, instructions.len());
+        assert_eq!(&Value(vec![PathStep::Name("foobar")]), &instructions[0]);
+    }
+
+    #[test]
+    fn test_compile_value_delimiter() {
+        let text = "^{ foobar }$";
+        let instructions = TemplateCompiler::with_delimiter(text, Delimiter {
+            value_start: "^{",
+            value_end: "}$",
+            ..Default::default()
+        }).compile().unwrap();
         assert_eq!(1, instructions.len());
         assert_eq!(&Value(vec![PathStep::Name("foobar")]), &instructions[0]);
     }
@@ -492,6 +541,21 @@ mod test {
     fn test_if_endif() {
         let text = "{{ if foo }}Hello!{{ endif }}";
         let instructions = compile(text).unwrap();
+        assert_eq!(2, instructions.len());
+        assert_eq!(
+            &Branch(vec![PathStep::Name("foo")], true, 2),
+            &instructions[0]
+        );
+        assert_eq!(&Literal("Hello!"), &instructions[1]);
+    }
+    #[test]
+    fn test_if_endif_delemiter() {
+        let text = "^(( if foo ))$Hello!^(( endif ))$";
+        let instructions = TemplateCompiler::with_delimiter(text, Delimiter{
+            block_start: "^((",
+            block_end: "))$",
+            ..Default::default()
+        }).compile().unwrap();
         assert_eq!(2, instructions.len());
         assert_eq!(
             &Branch(vec![PathStep::Name("foo")], true, 2),
@@ -584,6 +648,18 @@ mod test {
     fn test_comment() {
         let text = "Hello, {# foo bar baz #} there!";
         let instructions = compile(text).unwrap();
+        assert_eq!(2, instructions.len());
+        assert_eq!(&Literal("Hello, "), &instructions[0]);
+        assert_eq!(&Literal(" there!"), &instructions[1]);
+    }
+    #[test]
+    fn test_comment_delimiter() {
+        let text = "Hello, ^((# foo bar baz #))$ there!";
+        let instructions = TemplateCompiler::with_delimiter(text, Delimiter {
+            comment_start: "^((",
+            comment_end: "))$",
+            ..Default::default()
+        }).compile().unwrap();
         assert_eq!(2, instructions.len());
         assert_eq!(&Literal("Hello, "), &instructions[0]);
         assert_eq!(&Literal(" there!"), &instructions[1]);
