@@ -289,7 +289,7 @@ impl<'template> TemplateCompiler<'template> {
         let mut position = search_substr
             .find(|chr| self.delimiter_prefix.contains(&chr))
             .unwrap_or_else(|| search_substr.len());
-        if escaped {
+        if escaped || position == 0 {
             position += 1;
         }
 
