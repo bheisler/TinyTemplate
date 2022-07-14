@@ -12,6 +12,14 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 
+# Defines a custom arbitrary, Serialize-able value for inputs.
+[dependencies.arbitrary]
+version = "1"
+features = ["derive"]
+[dependencies.serde]
+version = "1"
+features = ["derive"]
+
 [dependencies.tinytemplate]
 path = ".."
 
