@@ -12,13 +12,17 @@ enum Value {
     Object(std::collections::HashMap<String, Value>),
 }
 
-fuzz_target!(|val: (&str, Value)| {
-    let (data, value) = val;
+fuzz_target!(|val: (&str, Vec<(&str, &str)>, Value)| {
+    let (data, extra, value) = val;
     let mut tpl = tinytemplate::TinyTemplate::new();
 
     if tpl.add_template("template", data).is_err() {
         return;
     }
 
-    let _ = tinytemplate::TinyTemplate::new().render("template", &value);
+    for (name, data) in extra {
+        let _ = tpl.add_template(name, data).is_err();
+    }
+
+    let _ = tpl.render("template", &value);
 });
