@@ -160,12 +160,19 @@ impl<'template> TemplateCompiler<'template> {
                     }
                     escaped = text.ends_with('\\');
                     if escaped {
-                        text = &text[0..(text.len() - 1)];
+                        text = &text[..text.len() - 1];
                     }
                     self.instructions.push(Instruction::Literal(text));
 
                     if !escaped {
                         break;
+                    }
+
+                    if escaped && self.remaining_text.is_empty() {
+                        return Err(self.parse_error(
+                            text,
+                            "Found an escape that doesn't escape any character.".to_string()
+                        ));
                     }
                 }
             }
