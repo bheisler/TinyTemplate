@@ -709,4 +709,16 @@ mod test {
         assert_eq!(&Literal("hello "), &instructions[0]);
         assert_eq!(&Literal("{world}"), &instructions[1]);
     }
+
+    #[test]
+    fn test_unmatched_escape() {
+        let text = r#"0\"#;
+        compile(text).unwrap_err();
+    }
+
+    #[test]
+    fn test_mismatched_closing_tag() {
+        let text = "{#}";
+        compile(text).unwrap_err();
+    }
 }
