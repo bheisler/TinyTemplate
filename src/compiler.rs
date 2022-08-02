@@ -160,12 +160,19 @@ impl<'template> TemplateCompiler<'template> {
                     }
                     escaped = text.ends_with('\\');
                     if escaped {
-                        text = &text[0..(text.len() - 1)];
+                        text = &text[..text.len() - 1];
                     }
                     self.instructions.push(Instruction::Literal(text));
 
                     if !escaped {
                         break;
+                    }
+
+                    if escaped && self.remaining_text.is_empty() {
+                        return Err(self.parse_error(
+                            text,
+                            "Found an escape that doesn't escape any character.".to_string()
+                        ));
                     }
                 }
             }
@@ -341,10 +348,17 @@ impl<'template> TemplateCompiler<'template> {
     /// Advance the cursor to after the given expected_close string and return the text in between
     /// (including the expected_close characters), or return an error message if we reach the end
     /// of a line of text without finding it.
+    /// Assumes that there's a start token with the same length as the close token at the start of
+    /// currently remaining text.
     fn consume_tag(&mut self, expected_close: &str) -> Result<&'template str> {
+        // We skip over the matching start token for this tag, so that we do not accidentally match
+        // some suffix of it with the close token. We assume that the start token is as long as the
+        // end token.
+        let start_len = expected_close.len();
+        let end_len = expected_close.len();
         if let Some(line) = self.remaining_text.lines().next() {
-            if let Some(pos) = line.find(expected_close) {
-                let (tag, remaining) = self.remaining_text.split_at(pos + expected_close.len());
+            if let Some(pos) = line[start_len..].find(expected_close) {
+                let (tag, remaining) = self.remaining_text.split_at(pos + start_len + end_len);
                 self.remaining_text = remaining;
                 Ok(tag)
             } else {
@@ -694,5 +708,17 @@ mod test {
         assert_eq!(2, instructions.len());
         assert_eq!(&Literal("hello "), &instructions[0]);
         assert_eq!(&Literal("{world}"), &instructions[1]);
+    }
+
+    #[test]
+    fn test_unmatched_escape() {
+        let text = r#"0\"#;
+        compile(text).unwrap_err();
+    }
+
+    #[test]
+    fn test_mismatched_closing_tag() {
+        let text = "{#}";
+        compile(text).unwrap_err();
     }
 }
